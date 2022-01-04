@@ -15,7 +15,8 @@
         "laravel/ui": "^3.3",
         "lcobucci/jwt": "^4.1",
         "symfony/dotenv": "^5.3",
-        "vlucas/phpdotenv": "^5.3"
+        "vlucas/phpdotenv": "^5.3",
+        "nesbot/carbon": "^2.0.0"
     },
     "require-dev": {
         "facade/ignition": "^2.5",
