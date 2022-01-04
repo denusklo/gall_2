@@ -16,6 +16,8 @@ class FirebaseController extends Controller
 
     public function __construct()
     {
+        $serviceAccount = ServiceAccount::fromJsonFile(__DIR__ . '/FirebaseKey.json');
+
         $factory = (new Factory)
             // ->withServiceAccount(env('FIREBASE_CREDENTIALS'))
             ->withDatabaseUri('https://usforus-3e70b-default-rtdb.asia-southeast1.firebasedatabase.app/');
@@ -36,8 +38,8 @@ class FirebaseController extends Controller
     }
     public function indexByUid()
     {
-        $uid = 'db3fsuuE5mbk5B3MtlficdqcbUB3';
-//         $uid = $_SESSION['verified_user_id'];
+        // $uid = 'db3fsuuE5mbk5B3MtlficdqcbUB3';
+        $uid = $_SESSION['verified_user_id'];
         $database = $this->database;
 
         $data = $database->getReference('Requests/' . $uid)->getvalue();

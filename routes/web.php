@@ -40,6 +40,7 @@ Route::get('testing/editUser', [App\Http\Controllers\FirebaseAuthController::cla
 Route::post('testing/updateUser', [App\Http\Controllers\FirebaseAuthController::class, 'updateUser'])->name('updateUser');
 
 Route::post('register/createUser', [App\Http\Controllers\FirebaseAuthController::class, 'createUser'])->name('createUser');
+Route::get('test', [App\Http\Controllers\FirebaseAuthController::class, 'test']);
 Route::post('login/', [App\Http\Controllers\FirebaseAuthController::class, 'login'])->name('firebaseLogin');
 Route::get('logout/', [App\Http\Controllers\FirebaseAuthController::class, 'logout'])->name('firebaseLogout');
 
