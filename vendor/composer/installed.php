@@ -5,7 +5,7 @@
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
-        'reference' => '58645adec2a78137c5a6367cc3524edfbaf05f40',
+        'reference' => 'c7eae56a3baea08b8b4f2d4a601a3f5f4ce420df',
         'name' => 'laravel/laravel',
         'dev' => true,
     ),
@@ -499,7 +499,7 @@
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
-            'reference' => '58645adec2a78137c5a6367cc3524edfbaf05f40',
+            'reference' => 'c7eae56a3baea08b8b4f2d4a601a3f5f4ce420df',
             'dev_requirement' => false,
         ),
         'laravel/sail' => array(
@@ -728,12 +728,12 @@
             'dev_requirement' => true,
         ),
         'phpdocumentor/type-resolver' => array(
-            'pretty_version' => '1.5.1',
-            'version' => '1.5.1.0',
+            'pretty_version' => '1.6.0',
+            'version' => '1.6.0.0',
             'type' => 'library',
             'install_path' => __DIR__ . '/../phpdocumentor/type-resolver',
             'aliases' => array(),
-            'reference' => 'a12f7e301eb7258bb68acd89d4aefa05c2906cae',
+            'reference' => '93ebd0014cab80c4ea9f5e297ea48672f1b87706',
             'dev_requirement' => true,
         ),
         'phpoption/phpoption' => array(

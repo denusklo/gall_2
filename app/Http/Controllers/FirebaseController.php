@@ -16,18 +16,9 @@ class FirebaseController extends Controller
 
     public function __construct()
     {
-        // $serviceAccount = ServiceAccount::fromJsonFile(__DIR__ . '/FirebaseKey.json');
-
-        // $factory = (new Factory)
-        //     // ->withServiceAccount(env('FIREBASE_CREDENTIALS'))
-        //     ->withDatabaseUri('https://usforus-3e70b-default-rtdb.asia-southeast1.firebasedatabase.app/');
-
         $database = app('firebase.database');
 
         $this->database = $database;
-
-        // $database = app('firebase.database');
-        // $this->database = $database;
     }
 
     public function index()
