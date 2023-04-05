@@ -19,5 +19,6 @@ yarn-error.log
 /app/Http/Controllers/FirebaseKey.json
 /app/Http/Controllers/FirebaseKey_old.json
 FirebaseKey_old_2.json
+FirebaseKey_old_3.json
 FirebaseKey_old.json
-# FirebaseKey.json
+FirebaseKey.json
