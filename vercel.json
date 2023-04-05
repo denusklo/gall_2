@@ -20,8 +20,6 @@
         "APP_ENV": "production",
         "APP_DEBUG": "true",
         "APP_URL": "https://yourproductionurl.com",
-        "APP_KEY": "base64:qsmgYkM/7tfkf2HN0NwzGy1YcVFW1GQ8K1vCwFgSZgo=",
-        "FIREBASE_DATABASE_URL": "https://usforus-3e70b-default-rtdb.asia-southeast1.firebasedatabase.app/",
 
         "APP_CONFIG_CACHE": "/tmp/config.php",
         "APP_EVENTS_CACHE": "/tmp/events.php",
