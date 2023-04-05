@@ -55,6 +55,7 @@ class FirebaseAuthController extends Controller
     public function login(Request $request)
     {
         $auth = $this->auth;
+        dd($request);
 
         try {
             $user = $auth->getUserByEmail($request->email);
