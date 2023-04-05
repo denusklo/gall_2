@@ -5,6 +5,7 @@ use App\Http\Controllers\FirebaseController;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\KJKController;
 use Kreait\Laravel\Firebase\Facades\FirebaseAuth;
+use App\Http\Controllers\FirebaseAuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,7 +29,15 @@ Route::get('home', [App\Http\Controllers\HomeController::class, 'index'])->name(
 Route::get('testing/create', [KJKController::class, 'createRequest'])->name('createRequest');
 
 Route::get('userHome', function () {
-    return view('users.userHome');
+
+
+    // $authenticator =  new FirebaseAuthController;
+    // $authenticator->authentication();
+
+    $controller = new FirebaseController();
+    $data = $controller->indexByUid();
+
+    return view('users.userHome', compact('data'));
 })->name('userHome');
 
 Route::post('testing/delete', [FirebaseController::class, 'deleteRequest'])->name('deleteRequest');

@@ -2,9 +2,7 @@
 
 @section('content')
 <?php
-        use App\Http\Controllers\FirebaseAuthController;
-        $authenticator =  new FirebaseAuthController;
-        $authenticator->authentication();
+        
     ?>
 
 
@@ -26,9 +24,6 @@
                 <div class="card-header">Your Request</div>
                 <div class="card-body">
                             <?php
-                            use App\Http\Controllers\FirebaseController;
-                                $controller = new FirebaseController();
-                                $data = $controller->indexByUid();
                                 if (is_null($data)) {
                                     echo "Please enter request";
                                 } else {

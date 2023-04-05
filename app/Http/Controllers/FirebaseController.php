@@ -16,9 +16,14 @@ class FirebaseController extends Controller
 
     public function __construct()
     {
-        $database = app('firebase.database');
 
-        $this->database = $database;
+        $factory = (new Factory)
+            ->withDatabaseUri(env('FIREBASE_DATABASE_URL'));
+
+        $this->database = $factory->createDatabase();
+        // $database = app('firebase.database');
+
+        // $this->database = $database;
     }
 
     public function index()
