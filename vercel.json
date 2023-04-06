@@ -33,6 +33,6 @@
 
         "CACHE_DRIVER": "array",
         "LOG_CHANNEL": "stderr",
-        "SESSION_DRIVER": "file"
+        "SESSION_DRIVER": "redis"
     }
 }
