@@ -36,6 +36,7 @@ class FirebaseController extends Controller
     }
     public function indexByUid()
     {
+        phpinfo();
         dd($_SESSION);
         // dd(request()->all());
         // $uid = 'db3fsuuE5mbk5B3MtlficdqcbUB3';
