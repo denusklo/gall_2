@@ -21,7 +21,6 @@ class FirebaseController extends Controller
             ->withDatabaseUri(env('FIREBASE_DATABASE_URL'));
 
         $this->database = $factory->createDatabase();
-        dd($this->database);
         // $database = app('firebase.database');
 
         // $this->database = $database;
