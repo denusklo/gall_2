@@ -2,7 +2,7 @@
 
 @section('content')
 <?php
-        
+        // dd(storage_path('framework/cache/data'));
     ?>
 
 
