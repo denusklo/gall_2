@@ -36,5 +36,5 @@
         "LOG_CHANNEL": "stderr",
         "SESSION_DRIVER": "file"
     },
-    "buildCommand": "next build"
+    "buildCommand": "npm run build"
 }
