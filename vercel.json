@@ -1,5 +1,12 @@
 {
     "version": 2,
+    "builds": [
+    {
+        "src": "api/index.php",
+        "use": "@vercel/php",
+        "buildCommand": "npm run build"
+    }
+    ],
     "functions": {
         "api/index.php": { 
             "runtime": "vercel-php@0.5.3",
@@ -35,12 +42,5 @@
         "CACHE_DRIVER": "array",
         "LOG_CHANNEL": "stderr",
         "SESSION_DRIVER": "file"
-    },
-    "builds": [
-        {
-            "command": [
-                "mkdir -p /tmp/sessions"
-            ]
-        }
-    ]
+    }
 }
