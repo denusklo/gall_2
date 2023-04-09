@@ -36,9 +36,7 @@
         "LOG_CHANNEL": "stderr",
         "SESSION_DRIVER": "file"
     },
-    "builds": [
-        {
-            "buildCommand": "npm run build"
-        }
+    "command": [
+        "mkdir -p /tmp/sessions"
     ]
 }
