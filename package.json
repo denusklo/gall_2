@@ -8,7 +8,7 @@
         "hot": "mix watch --hot",
         "prod": "npm run production",
         "production": "mix --production",
-        "build": "mkdir -p /tmp/sessions && chmod 733 /tmp/sessions"
+        "build": "mkdir -p /tmp/sessions && chmod 733 /tmp/sessions && ls -la /tmp"
     },
     "devDependencies": {
         "axios": "^0.21.4",
