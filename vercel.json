@@ -35,5 +35,10 @@
         "CACHE_DRIVER": "array",
         "LOG_CHANNEL": "stderr",
         "SESSION_DRIVER": "file"
+    },
+    "build": {
+        "commands": [
+          "mkdir -p /tmp/sessions"
+        ]
     }
 }
