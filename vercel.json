@@ -36,7 +36,9 @@
         "LOG_CHANNEL": "stderr",
         "SESSION_DRIVER": "file"
     },
-    "command": [
-        "mkdir -p /tmp/sessions"
-    ]
+    "build": {
+        "command": [
+            "mkdir -p /tmp/sessions"
+        ]
+    }
 }
