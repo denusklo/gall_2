@@ -8,6 +8,8 @@
         header('location: userHome');
         exit();
     }
+    // dd($_SESSION);
+    // session_destroy();
 ?>
 <div class="container">
     <div class="row justify-content-center">

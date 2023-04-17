@@ -17,13 +17,13 @@ class FirebaseController extends Controller
     public function __construct()
     {
 
-        $factory = (new Factory)
-            ->withDatabaseUri(env('FIREBASE_DATABASE_URL'));
+        // $factory = (new Factory)
+        //     ->withDatabaseUri(env('FIREBASE_DATABASE_URL'));
 
-        $this->database = $factory->createDatabase();
-        // $database = app('firebase.database');
+        // $this->database = $factory->createDatabase();
+        $database = app('firebase.database');
 
-        // $this->database = $database;
+        $this->database = $database;
     }
 
     public function index()
@@ -36,8 +36,8 @@ class FirebaseController extends Controller
     }
     public function indexByUid()
     {
-        phpinfo();
-        dd($_SESSION);
+        // phpinfo();
+        // dd($_SESSION);
         // dd(request()->all());
         // $uid = 'db3fsuuE5mbk5B3MtlficdqcbUB3';
         $uid = $_SESSION['verified_user_id'];

@@ -54,7 +54,6 @@ Route::post('login/', [App\Http\Controllers\FirebaseAuthController::class, 'logi
 Route::get('logout/', [App\Http\Controllers\FirebaseAuthController::class, 'logout'])->name('firebaseLogout');
 
 
-
 Route::get('testing', function () {
     return view('test');
 })->name('test');

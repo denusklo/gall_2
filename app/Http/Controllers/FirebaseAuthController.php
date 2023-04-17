@@ -13,6 +13,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Kreait\Firebase\Auth;
 use Kreait\Firebase\Factory;
+use Kreait\Firebase\ServiceAccount;
 use Firebase\Auth\Token\Exception\InvalidToken;
 use Firebase\Auth\Token;
 use phpDocumentor\Reflection\Location;
@@ -23,9 +24,33 @@ class FirebaseAuthController extends Controller
 
     public function __construct()
     {
-        // $this->auth = $auth;
-
+        
         $this->auth = app('firebase.auth');
+        
+        // $factory = (new Factory)
+        //     ->withProjectId(config('services.firebase.project_id'))
+        //     ->withDatabaseUri(config('services.firebase.database_url'));
+        // $this->auth = $factory->createAuth();
+
+        // $serviceAccount = ServiceAccount::fromArray([
+        //     "type" => "service_account",
+        //     "project_id" => config('services.firebase.project_id'),
+        //     "private_key_id" => config('services.firebase.private_key_id'),
+        //     "private_key" => config('services.firebase.private_key'),
+        //     "client_email" => config('services.firebase.client_email'),
+        //     "client_id" => config('services.firebase.client_id'),
+        //     "auth_uri" => "https://accounts.google.com/o/oauth2/auth",
+        //     "token_uri" => "https://oauth2.googleapis.com/token",
+        //     "auth_provider_x509_cert_url" => "https://www.googleapis.com/oauth2/v1/certs",
+        //     "client_x509_cert_url" => config('services.firebase.client_x509_cert_url')
+        // ]);
+
+        // $this->firebase = (new Factory)
+        //     ->withServiceAccount($serviceAccount)
+        //     ->withDatabaseUri(config('services.firebase.database_url'))
+        //     ->create();
+    
+
     }
 
     public function createUser(Request $request)
@@ -54,8 +79,9 @@ class FirebaseAuthController extends Controller
 
     public function login(Request $request)
     {
+        // dd($this->auth);
         $auth = $this->auth;
-        // dd($request);
+        // dd($auth);
 
         try {
             $user = $auth->getUserByEmail($request->email);

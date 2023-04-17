@@ -23,7 +23,7 @@
         
         "FIREBASE_DATABASE_URL": "https://usforus-3e70b-default-rtdb.asia-southeast1.firebasedatabase.app/",
         "CACHE_PATH": "/tmp/cache",
-        "SESSIONS_PATH": "/tmp",
+        "SESSIONS_PATH": "/tmp/sessions",
 
         "APP_CONFIG_CACHE": "/tmp/config.php",
         "APP_EVENTS_CACHE": "/tmp/events.php",
@@ -35,5 +35,6 @@
         "CACHE_DRIVER": "array",
         "LOG_CHANNEL": "stderr",
         "SESSION_DRIVER": "file"
-    }
+    },
+    "buildCommand": "npm run build"
 }
