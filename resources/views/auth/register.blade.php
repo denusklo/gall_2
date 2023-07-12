@@ -24,7 +24,7 @@
                 <div class="card-header">{{ __('Register') }}</div>
 
                 <div class="card-body">
-                    <form method="POST" action="{{ route('createUser') }}">
+                    <form method="POST" action="{{ route('user.create') }}">
                         @csrf
 
                         <div class="form-group row">
