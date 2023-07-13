@@ -12,6 +12,7 @@
         "guzzlehttp/guzzle": "^7.0.1",
         "kreait/laravel-firebase": "^3.4",
         "laravel/framework": "^8.40",
+        "laravel/sanctum": "*",
         "laravel/tinker": "^2.6",
         "laravel/ui": "^3.3",
         "lcobucci/jwt": "^4.1",

@@ -53,7 +53,16 @@ class FirebaseAuthController extends Controller
 
     }
 
-    public function createUser(Request $request)
+    public function register()
+    {
+        return view('auth.firebase.register');
+    }
+    public function showLoginForm()
+    {
+        return view('auth.firebase.login');
+    }
+
+    public function store(Request $request)
     {
         $auth = $this->auth;
         $userProperties = [
@@ -66,14 +75,17 @@ class FirebaseAuthController extends Controller
             'disabled' => false,
         ];
 
-        $user = $auth->createUser($userProperties);
+        try {
+            $user = $auth->createUser($userProperties);
+        } catch (Exception $e) {
+            return redirect()->route('firebase.register')->withInput()->with('error', "User not created/registered. " . $e->getMessage());
+        }
 
         if ($user) {
-            $_SESSION['status'] = "User created/registered successfully";
-            return redirect()->route('register');
+            return redirect()->route('firebase.register')->with('success', "User created/registered successfully");
         } else {
             $_SESSION['status'] = "User not created/registered";
-            return redirect()->route('register');
+            return redirect()->route('firebase.register');
         }
     }
 
@@ -81,116 +93,78 @@ class FirebaseAuthController extends Controller
     {
         // dd($this->auth);
         $auth = $this->auth;
-        // dd($auth);
 
         try {
-            $user = $auth->getUserByEmail($request->email);
-
-            try {
-                $signInResult = $auth->signInWithEmailAndPassword($request->email, $request->password);
-                $idTokenString = $signInResult->idToken();
-
-                try {
-                    /** @var \Lcobucci\JWT\Token\Plain $verifiedIdToken */
-                    $verifiedIdToken = $auth->verifyIdToken($idTokenString);
-                    // $uid = $signInResult->firebaseUserId();
-
-                    $uid = $verifiedIdToken->claims()->get('sub');
-
-                    $_SESSION['displayName'] = $signInResult->data()["displayName"];
-                    $_SESSION['verified_user_id'] = $uid;
-                    $_SESSION['idTokenString'] = $idTokenString;
-
-                    $_SESSION['status'] = "Logged in successfully";
-
-                    return redirect()->route('userHome');
-                } catch (InvalidToken $e) {
-                    echo 'The token is invalid: ' . $e->getMessage();
-                } catch (\InvalidArgumentException $e) {
-                    echo 'The token could not be parsed: ' . $e->getMessage();
-                }
-                // if ($signInResult) {
-                //     return redirect()->route('createRequest');
-                // }
-            } catch (Exception $e) {
-
-                $_SESSION['status'] = "Wrong password";
-                return redirect()->route('login');
-            }
-        } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
-            // echo $e->getMessage();
-            $_SESSION['status'] = "Invalid Email Address";
-            return redirect()->route('login');
+            $user = $auth->getUserByEmail($request->email);           
+        } catch (Exception $e) {
+            return redirect()->route('firebase.login.form')->withInput()->with('error', $e->getMessage());
         }
+
+        try {
+            $signInResult = $auth->signInWithEmailAndPassword($request->email, $request->password);
+            $idTokenString = $signInResult->idToken();
+        } catch (Exception $e) {
+            return redirect()->route('firebase.login.form')->withInput()->with('error', "Wrong password.");
+        }
+        
+        try {
+            /** @var \Lcobucci\JWT\Token\Plain $verifiedIdToken */
+            $verifiedIdToken = $auth->verifyIdToken($idTokenString);
+            // $uid = $signInResult->firebaseUserId();
+
+            $uid = $verifiedIdToken->claims()->get('sub');
+
+            session()->put('displayName', $signInResult->data()["displayName"]);
+            session()->put('verified_user_id', $uid);
+            session()->put('idTokenString', $idTokenString);
+
+            session()->flash('success', "Logged in successfully");
+
+            return redirect()->route('user.home');
+        } catch (InvalidToken $e) {
+            return redirect()->route('firebase.login.form')->withInput()->with('error', 'The token is invalid: ' . $e->getMessage());
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->route('firebase.login.form')->withInput()->with('error', 'The token could not be parsed: ' . $e->getMessage());
+        }
+        // if ($signInResult) {
+        //     return redirect()->route('createRequest');
+        // }
+
     }
 
     public function logout(Request $request)
     {
-        unset($_SESSION['verified_user_id']);
-        unset($_SESSION['idTokenString']);
+        session()->forget('verified_user_id');
+        session()->forget('idTokenString');
+        session()->forget('displayName');
 
         if (isset($_SESSION['expiry_status'])) {
-            $_SESSION['status'] = "Session Expired";
+            session()->flash('error', "Session Expired");
         } else {
-            $_SESSION['status'] = "Logout successfully";
+            session()->flash('success', "Logout successfully");
         }
 
-        return redirect()->route('login');
+        return redirect()->route('firebase.login.form');
     }
 
     public function authentication()
     {
         $auth = $this->auth;
 
-        if (isset($_SESSION['verified_user_id'])) {
+        if (session()->get('verified_user_id')) {
 
-            $uid = $_SESSION['verified_user_id'];
-            $idTokenString = $_SESSION['idTokenString'];
+            $uid = session()->get('verified_user_id');
+            $idTokenString = session()->get('idTokenString');
 
             try {
                 $verifiedIdToken = $auth->verifyIdToken($idTokenString);
             } catch (InvalidToken $e) {
-                echo 'The token is invalid: ' . $e->getMessage();
-                $_SESSION['expiry_status'] = "Token expired/invalid. Login again.";
-                header('location: login');
-                exit();
+                return false;
             } catch (\InvalidArgumentException $e) {
-                echo 'The token could not be parsed: ' . $e->getMessage();
-                $_SESSION['expiry_status'] = "Token expired/invalid. Login again.";
-                header('location: login');
-                exit();
+                return false;
             }
-        } else {
-
-            $_SESSION['status'] = "Login to access this page";
-            header('location: login');
-            exit();
-        }
-    }
-
-    public function editUser(Request $request)
-    {
-        $auth = $this->auth;
-
-        if (isset($_SESSION['uid'])) {
-            $uid = $_SESSION['uid'];
-            try {
-                $user = $auth->getUser($uid);
-                $_SESSION['display_name'] = $user->displayName;
-                $_SESSION['phone'] = $user->phoneNumber;
-                // return redirect()->route('editUser');
-                header('location: editUser');
-                exit();
-            } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
-                echo $e->getMessage();
-            }
-        }
-
-
-
-        // $_SESSION[''];
-
-        // echo $request->uid;
-        return view('users.editUser');
+            return true;
+        } 
+        return false;
     }
 }

@@ -1,11 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\FirebaseController;
 use Illuminate\Support\Facades\Auth;
-use App\Http\Controllers\KJKController;
 use Kreait\Laravel\Firebase\Facades\FirebaseAuth;
+use App\Http\Controllers\FirebaseController;
 use App\Http\Controllers\FirebaseAuthController;
+use App\Http\Controllers\FirebaseUserController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\HomeController;
 use Illuminate\Http\Request;
@@ -34,34 +34,12 @@ Route::middleware(['auth'])->group(function () {
 
 });
 
-Route::get('testing/create', [KJKController::class, 'createRequest'])->name('createRequest');
 
-Route::get('userHome', function () {
-
-
-    // $authenticator =  new FirebaseAuthController;
-    // $authenticator->authentication();
-
-    $controller = new FirebaseController();
-    $data = $controller->indexByUid();
-
-    return view('users.userHome', compact('data'));
-})->name('userHome');
-
-Route::post('testing/delete', [FirebaseController::class, 'deleteRequest'])->name('deleteRequest');
-Route::post('testing/store', [FirebaseController::class, 'storeRequest'])->name('storeRequest');
-Route::post('testing/update', [FirebaseController::class, 'updateRequest'])->name('updateRequest');
-
-Route::post('testing/deleteUser', [App\Http\Controllers\FirebaseAuthController::class, 'deleteUser'])->name('deleteUser');
-Route::get('testing/editUser', [App\Http\Controllers\FirebaseAuthController::class, 'editUser'])->name('editUser');
-Route::post('testing/updateUser', [App\Http\Controllers\FirebaseAuthController::class, 'updateUser'])->name('updateUser');
-
-// Route::post('register/createUser', [App\Http\Controllers\FirebaseAuthController::class, 'createUser'])->name('createUser');
-
-Route::get('test', [App\Http\Controllers\FirebaseAuthController::class, 'test']);
-
-Route::post('register', [UserController::class, 'create'])->name('user.create');
+Route::get('register', [UserController::class, 'register'])->name('user.create');
+Route::get('login', [UserController::class, 'showLoginForm'])->name('user.login.form');
+Route::post('register', [UserController::class, 'store'])->name('user.store');
 Route::post('login', [UserController::class, 'login'])->name('user.login');
+
 // Route::post('register/', function (Request $request) {
 //     $data = $request->validate([
 //         'name' => 'required|string|max:255',
@@ -72,13 +50,40 @@ Route::post('login', [UserController::class, 'login'])->name('user.login');
 //     return app(RegisterController::class)->create($data);
 // })->name('createUser');
 
+Route::prefix('firebase')->as('firebase.')->group( function () 
+{    
+    Route::get('/register', [FirebaseAuthController::class, 'register'])->name('create');
+    Route::post('/register', [FirebaseAuthController::class, 'store'])->name('register');
+    Route::get('/login', [FirebaseAuthController::class, 'showLoginForm'])->name('login.form');
+    Route::post('/login', [FirebaseAuthController::class, 'login'])->name('login');
+    Route::get('/logout', [FirebaseAuthController::class, 'logout'])->name('logout');
 
-// Route::post('login/', [App\Http\Controllers\FirebaseAuthController::class, 'login'])->name('firebaseLogin');
-// Route::get('logout/', [App\Http\Controllers\FirebaseAuthController::class, 'logout'])->name('firebaseLogout');
+});
+
+Route::middleware([
+    'firebase.auth',
+])->group(function() {    
+    
+    Route::get('user/home', function () {
+
+        $controller = new FirebaseController();
+        $data = $controller->indexByUid();
+
+        return view('user.home', compact('data'));
+    })->name('user.home');
 
 
-Route::get('testing', function () {
-    return view('test');
-})->name('test');
+    Route::resource('request', RequestController::class);
 
-Route::get('firebase', [FirebaseController::class, 'index']);
+    Route::get('users', [FirebaseUserController::class, 'index'])->name('users');
+    Route::get('user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
+    Route::put('user/update', [FirebaseUserController::class, 'update'])->name('user.update');
+    Route::delete('user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
+    Route::get('firebase', [FirebaseController::class, 'index']);
+
+
+});
+
+
+
+

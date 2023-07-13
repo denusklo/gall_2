@@ -9,6 +9,16 @@ use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
+    public function showLoginForm(Request $request)
+    {
+        return view('auth.login');
+    }
+
+    public function register(Request $request)
+    {
+        return view('auth.register');
+    }
+
     public function create(Request $request)
     {
         // dd($request->all());
@@ -23,11 +33,12 @@ class UserController extends Controller
 
         return redirect(route('home'));
     }
+
     public function login(Request $request)
     {
         $credentials = $request->only('email', 'password');
 
-        if (Auth::attempt($credentials)) {
+        if (Auth::guard('web')->attempt($credentials)) {
             // Authentication passed...
             return redirect()->intended('home');
         }

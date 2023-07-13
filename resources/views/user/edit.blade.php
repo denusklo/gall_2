@@ -2,11 +2,6 @@
 
 @section('content')
 
-<?php
-        use App\Http\Controllers\FirebaseAuthController;
-        $authenticator =  new FirebaseAuthController;
-        $authenticator->authentication();
-    ?>
 
 <div class="container">
     <div class="row justify-content-center">
@@ -22,7 +17,8 @@
                 <div class="card-header">{{ __('Edit and Update User Data') }}</div>
 
                 <div class="card-body">
-                    <form method="POST" action="{{ route('updateUser') }}">
+                    <form method="POST" action="{{ route('user.update') }}">
+                        @method("PUT")
                         @csrf
 
                         <div class="form-group row">

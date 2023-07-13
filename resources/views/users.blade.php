@@ -1,11 +1,6 @@
 @extends('layouts.app')
 
 @section('content')
-<?php
-        use App\Http\Controllers\FirebaseAuthController;
-        $authenticator =  new FirebaseAuthController;
-        $authenticator->authentication();
-    ?>
 
 <div class="container">
     <div class="row justify-content-center">
@@ -60,7 +55,7 @@
                             <tr >
                                 <th>Action</th>
                                 <td>
-                                    <form action="{{route('deleteRequest')}}" method="POST" style="display: inline-block">
+                                    <form action="{{route('user.delete')}}" method="POST" style="display: inline-block">
                                         {{ csrf_field() }}
                                         <input type="hidden" name="ref" value="<?php echo $arrayKeys[$i]; ?>">
                                         <button type="submit" name="delete_data" class="btn btn-danger" >Delete</button>
@@ -145,7 +140,7 @@
                         </thead>
                         <tbody>
                             <?php
-                                $auth =  new FirebaseAuthController;
+                                $auth =  new App\Http\Controllers\FirebaseAuthController;
                                 $users = $auth->auth->listUsers();
                                 $i = 1;
                                 foreach ($users as $user)
@@ -157,14 +152,14 @@
                                         <td><?=$user->phoneNumber?></td>
                                         <td><?=$user->email?></td>
                                         <td>
-                                            <form action="{{route('editUser')}}" method="get">
+                                            <form action="{{route('user.edit')}}" method="get">
                                                 {{ csrf_field() }}
                                                 <input type="hidden" name='uid' value="<?php echo $user->uid;?>">
                                                 <button type="submit" class="btn btn-primary btn-sm">Edit</button>
                                             </form>
                                         </td>
                                         <td>
-                                            <a href="{{route('deleteUser')}}" class="btn btn-danger btn-sm">Delete</a>
+                                            <a href="{{route('user.delete')}}" class="btn btn-danger btn-sm">Delete</a>
                                         </td>
 
                                     </tr>
@@ -179,7 +174,7 @@
         <div class="col-md-3">
             <div class="card">
                 <div class="card-body">
-                    <a href="{{route('createRequest')}}" class="btn btn-success btn-block">Create New Request</a>
+                    <a href="{{route('request.create')}}" class="btn btn-success btn-block">Create New Request</a>
                 </div>
                 <div class="card-body">
                     There are total

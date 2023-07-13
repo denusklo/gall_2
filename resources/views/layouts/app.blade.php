@@ -1,3 +1,9 @@
+@php
+    use App\Http\Controllers\FirebaseAuthController;
+    $authenticator =  new FirebaseAuthController;
+    $logged = $authenticator->authentication();
+@endphp
+
 <!doctype html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
@@ -26,7 +32,7 @@
         <nav class="navbar navbar-expand-md navbar-light bg-white shadow-sm">
             <div class="container">
                 <a class="navbar-brand" href="{{ url('/') }}">
-                    {{ __('Gall-1') }}
+                    {{ __('Gall-2') }}
                 </a>
                 <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="{{ __('Toggle navigation') }}">
                     <span class="navbar-toggler-icon"></span>
@@ -42,28 +48,36 @@
                     <ul class="navbar-nav ml-auto">
                         <!-- Authentication Links -->
                         @guest
-                        <?php
-                            if(!isset($_SESSION['verified_user_id'])) :
-                        ?>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ route('login') }}">{{ __('Login') }}</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ route('register') }}">{{ __('Register') }}</a>
-                            </li>
-                        <?php else: ?>
-                        <li class="nav-item">
-                            <span class="nav-link" href="{{ route('register') }}"><?php echo $_SESSION['displayName'];?></span>
-                        </li>
-                            <li class="nav-item">
-                                <form id="logout-form" action="{{ route('firebaseLogout') }}" method="POST" >
-                                    <a class="nav-link" href="{{ route('firebaseLogout') }}">{{ __('Logout') }}
-                                        @csrf
-                                    </a>
-                                </form>
-                            </li>
-                        <?php endif;?>
-
+                            @if (!session()->get('verified_user_id'))
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('user.login.form') }}">{{ __('Login') }}</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('user.create') }}">{{ __('Register') }}</a>
+                                </li>
+                                    <a class="nav-link" href="{{ route('firebase.login.form') }}">{{ __('Firebase Login') }}</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('firebase.create') }}">{{ __('Firebase Register') }}</a>
+                                </li>
+                            @else
+                                <li class="nav-item">
+                                    @if ($logged)
+                                        <a href="{{route("user.edit")}}" class="nav-link">
+                                            <span>{{session()->get('displayName')}}</span>
+                                        </a>
+                                    @else
+                                        <span class="nav-link">{{session()->get('displayName')}}</span>
+                                    @endif
+                                </li>
+                                <li class="nav-item">
+                                    <form id="logout-form" action="{{ route('firebase.logout') }}" method="POST" >
+                                        <a class="nav-link" href="{{ route('firebase.logout') }}">{{ __('Logout') }}
+                                            @csrf
+                                        </a>
+                                    </form>
+                                </li>
+                            @endif
                         @else
                             <li class="nav-item dropdown">
                                 <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
@@ -71,9 +85,15 @@
                                 </a>
 
                                 <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
-                                    <a class="dropdown-item" href="{{ route('logout') }}"
-                                       onclick="event.preventDefault();
-                                                     document.getElementById('logout-form').submit();">
+                                    <a 
+                                        class="dropdown-item" 
+                                        href="{{ route('logout') }}"
+                                        onclick=
+                                        "
+                                            event.preventDefault();
+                                            document.getElementById('logout-form').submit();
+                                        "
+                                    >
                                         {{ __('Logout') }}
                                     </a>
 

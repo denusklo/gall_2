@@ -67,7 +67,7 @@
                             <tr >
                                 <th>Action</th>
                                 <td>
-                                    <form action="{{route('deleteRequest')}}" method="POST" style="display: inline-block">
+                                    <form action="{{route('user.delete')}}" method="POST" style="display: inline-block">
                                         {{ csrf_field() }}
                                         <input type="hidden" name="ref" value="<?php echo $arrayKeys[$i]; ?>">
                                         <button type="submit" name="delete_data" class="btn btn-danger" >Delete</button>
@@ -85,7 +85,8 @@
                                                     </button>
                                                 </div>
                                                 <div class="modal-body">
-                                                    <form action="{{route('updateRequest')}}" method="POST" enctype="multipart/form-data">
+                                                    <form action="{{route('request.update', [session()->get('verified_user_id')])}}" method="POST" enctype="multipart/form-data">
+                                                        @method('PUT')
                                                         {{ csrf_field() }}
                                                         <div class="row">
                                                             <div class="col-md-6">
@@ -145,7 +146,7 @@
         <div class="col-md-3">
             <div class="card">
                 <div class="card-body">
-                    <a href="{{route('createRequest')}}" class="btn btn-success btn-block">Create New Request</a>
+                    <a href="{{route('request.create')}}" class="btn btn-success btn-block">Create New Request</a>
                 </div>
                 {{-- <div class="card-body"> --}}
                     {{-- There are total --}}

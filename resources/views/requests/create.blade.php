@@ -5,7 +5,7 @@
         <div class="card">
             <div class="card-header">Create New Request</div>
             <div class="card-body">
-                <form action="{{route('storeRequest')}}" method="POST" enctype="multipart/form-data">
+                <form action="{{route('request.store')}}" method="POST" enctype="multipart/form-data">
                     {{ csrf_field() }}
                     <div class="row">
                         <div class="col-md-6">
