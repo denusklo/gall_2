@@ -6,13 +6,15 @@
 <div class="container">
     <div class="row justify-content-center">
         <div class="col-md-8">
-            <?php
-            if(isset($_SESSION['status']))
-            {
-                echo "<h5 class='alert alert-success'>".$_SESSION['status']."</h5>";
-                unset($_SESSION['status']);
-            }
-            ?>
+            @if (session()->get('error'))
+                <h5 class='alert alert-warning'>
+                    {{session()->get('error')}}
+                </h5>
+            @elseif (session()->get('success'))
+                <h5 class='alert alert-success'>
+                    {{session()->get('success')}}
+                </h5>
+            @endif
             <div class="card">
                 <div class="card-header">{{ __('Edit and Update User Data') }}</div>
 
@@ -25,7 +27,7 @@
                             <label for="name" class="col-md-4 col-form-label text-md-right">{{ __('Display Name') }}</label>
 
                             <div class="col-md-6">
-                                <input id="name" type="text" class="form-control @error('name') is-invalid @enderror" name="name" value="<?php echo $_SESSION['displayName'];?>" >
+                                <input id="name" type="text" class="form-control @error('name') is-invalid @enderror" name="name" value="{{$name}}" >
 
                                 @error('name')
                                     <span class="invalid-feedback" role="alert">
@@ -39,7 +41,7 @@
                             <label for="email" class="col-md-4 col-form-label text-md-right">{{ __('Phone Number') }}</label>
 
                             <div class="col-md-6">
-                                <input id="phone" type="phone" class="form-control @error('phone number') is-invalid @enderror" name="phone" value="<?php echo $_SESSION['phone'];?>" >
+                                <input id="phone" type="phone" class="form-control @error('phone number') is-invalid @enderror" name="phone" value="{{$phone}}" >
 
                                 @error('phone')
                                     <span class="invalid-feedback" role="alert">

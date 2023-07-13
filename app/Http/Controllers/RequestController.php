@@ -11,9 +11,7 @@ class RequestController extends Controller
 
     public function __construct()
     {
-        $database = app('firebase.database');
-
-        $this->database = $database;
+        $this->database = app('firebase.database');
     }
 
     /**
@@ -23,7 +21,11 @@ class RequestController extends Controller
      */
     public function index()
     {
-        //
+        $uid = session()->get('verified_user_id');
+        $database = $this->database;
+
+        $data = $database->getReference('Requests/' . $uid)->getvalue();
+        return view('user.home', compact('data'));
     }
 
     /**
@@ -141,7 +143,7 @@ class RequestController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function destroy($id)
+    public function destroy($id, Request $request)
     {
         $database = $this->database;
         $id = $request->ref;

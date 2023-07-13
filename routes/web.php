@@ -40,16 +40,6 @@ Route::get('login', [UserController::class, 'showLoginForm'])->name('user.login.
 Route::post('register', [UserController::class, 'store'])->name('user.store');
 Route::post('login', [UserController::class, 'login'])->name('user.login');
 
-// Route::post('register/', function (Request $request) {
-//     $data = $request->validate([
-//         'name' => 'required|string|max:255',
-//         'email' => 'required|string|email|max:255|unique:users',
-//         'password' => 'required|string|min:8|confirmed',
-//     ]);
-
-//     return app(RegisterController::class)->create($data);
-// })->name('createUser');
-
 Route::prefix('firebase')->as('firebase.')->group( function () 
 {    
     Route::get('/register', [FirebaseAuthController::class, 'register'])->name('create');
@@ -64,23 +54,14 @@ Route::middleware([
     'firebase.auth',
 ])->group(function() {    
     
-    Route::get('user/home', function () {
-
-        $controller = new FirebaseController();
-        $data = $controller->indexByUid();
-
-        return view('user.home', compact('data'));
-    })->name('user.home');
-
-
+    Route::get('user/home', [App\Http\Controllers\RequestController::class, 'index'])->name('user.home');
     Route::resource('request', RequestController::class);
 
     Route::get('users', [FirebaseUserController::class, 'index'])->name('users');
     Route::get('user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
     Route::put('user/update', [FirebaseUserController::class, 'update'])->name('user.update');
-    Route::delete('user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
+    Route::any('user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
     Route::get('firebase', [FirebaseController::class, 'index']);
-
 
 });
 

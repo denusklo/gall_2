@@ -12,27 +12,21 @@ class FirebaseAuthMiddleware
 
     $auth = app('firebase.auth');
 
-    if (session()->get('verified_user_id')) {
+    if (empty(session()->get('verified_user_id'))) {
+      return redirect()->route('firebase.login.form')->with('error', 'User not logged in.');
+    }
 
-        $uid = session()->get('verified_user_id');
-        $idTokenString = session()->get('idTokenString');
+    $idTokenString = session()->get('idTokenString');
 
-        try {
-            $verifiedIdToken = $auth->verifyIdToken($idTokenString);
-        } catch (InvalidToken $e) {
-            return redirect()->route('firebase.login.form')->with('error', 'User not logged in.');
-        } catch (\InvalidArgumentException $e) {
-            return redirect()->route('firebase.login.form')->with('error', 'User not logged in.');
-        }
+    try {
+        $verifiedIdToken = $auth->verifyIdToken($idTokenString);
+    } catch (InvalidToken $e) {
+        return redirect()->route('firebase.login.form')->with('error', 'User not logged in.');
+    } catch (\InvalidArgumentException $e) {
+        return redirect()->route('firebase.login.form')->with('error', 'User not logged in.');
     }
 
     return $next($request);
-
-    // if (session()->get('verified_user_id') && session()->get('idTokenString'))  {
-    //   return $next($request);
-    // } else{
-    //   return redirect()->route('firebase.login.form')->with('error', 'User not logged in.');
-    // }
 
   }
 

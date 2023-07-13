@@ -9,11 +9,17 @@ class FirebaseUserController extends Controller
     public function __construct()
     {
         $this->auth = app('firebase.auth');
+        $this->database = app('firebase.database');
     }
     
     public function index(Request $request)
     {
-        return view('users');
+        $auth = $this->auth;
+
+        $users = $auth->listUsers();
+        $numchildren = $this->database->getReference('Requests')->getSnapshot()->numchildren();
+        
+        return view('users', compact("users", 'numchildren'));
     }
 
     public function edit(Request $request)
@@ -24,18 +30,24 @@ class FirebaseUserController extends Controller
             return redirect()->route('firebase.login.form')->with('error', 'Login to access this page');
         }
         
-        $uid = session()->get('verified_user_id');
+        $uid = $request->uid ?? session()->get('verified_user_id');
         try {
             $user = $auth->getUser($uid);
-            session()->put('display_name', $user->displayName);
-            session()->put('phone', $user->phoneNumber);
-            return view('user.edit');
+
+            $name = $user->displayName;
+            $phone = $user->phoneNumber;
+            return view('user.edit', compact('name', 'phone'));
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
             return redirect()->route('firebase.login.form')->with('error', $e->getMessage());
         }
     }
 
     public function update(Request $request)
+    {
+        dd($request->all());
+    }
+
+    public function delete(Request $request)
     {
         dd($request->all());
     }

@@ -84,8 +84,7 @@ class FirebaseAuthController extends Controller
         if ($user) {
             return redirect()->route('firebase.register')->with('success', "User created/registered successfully");
         } else {
-            $_SESSION['status'] = "User not created/registered";
-            return redirect()->route('firebase.register');
+            return redirect()->route('firebase.register')->with('error', "User not created/registered. " . $e->getMessage());
         }
     }
 

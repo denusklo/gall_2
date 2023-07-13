@@ -2,13 +2,6 @@
 
 @section('content')
 
-<?php
-    if (isset($_SESSION['verified_user_id'])) {
-        $_SESSION['status'] = "You are already logged in";
-        header('location: ' . route('user.home'));
-        exit();
-    }
-?>
 @php
 if (!empty(session()->get('verified_user_id'))) {
     session()->flash('success', "You are already logged in");
@@ -27,13 +20,6 @@ if (!empty(session()->get('verified_user_id'))) {
                     {{session()->get('error')}}
                 </h5>
             @endif
-            <?php
-            if(isset($_SESSION['status']))
-            {
-                echo "<h5 class='alert alert-light'>".$_SESSION['status']."</h5>";
-                unset($_SESSION['status']);
-            }
-            ?>
             <div class="card">
                 <div class="card-header">{{ __('Login') }}</div>
 
