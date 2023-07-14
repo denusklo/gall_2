@@ -17,6 +17,7 @@
         }
     ],
     "env": {
+        "APP_NAME": "Request.io",
         "APP_ENV": "production",
         "APP_DEBUG": "true",
         "APP_URL": "https://gall-2.vercel.app/",

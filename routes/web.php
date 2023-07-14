@@ -37,7 +37,7 @@ Route::middleware(['auth'])->group(function () {
 
 Route::get('register', [UserController::class, 'register'])->name('user.create');
 Route::get('login', [UserController::class, 'showLoginForm'])->name('user.login.form');
-Route::post('register', [UserController::class, 'store'])->name('user.store');
+Route::post('register', [UserController::class, 'create'])->name('user.store');
 Route::post('login', [UserController::class, 'login'])->name('user.login');
 
 Route::prefix('firebase')->as('firebase.')->group( function () 
