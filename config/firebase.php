@@ -54,7 +54,7 @@ return [
                  * following parameter to false. If you disable it, you must
                  * provide a credentials file.
                  */
-                'auto_discovery' => true,
+                'auto_discovery' => false,
             ],
 
             /*

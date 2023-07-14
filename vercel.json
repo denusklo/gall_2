@@ -34,7 +34,8 @@
         "VIEW_COMPILED_PATH": "/tmp",
 
         "CACHE_DRIVER": "array",
-        "LOG_CHANNEL": "stderr"
+        "LOG_CHANNEL": "stderr",
+        "FIREBASE_CREDENTIALS": "key.json"
     },
     "buildCommand": "npm run build"
 }
