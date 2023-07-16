@@ -43,7 +43,7 @@ class UserController extends Controller
             return redirect()->intended('home');
         }
 
-        return redirect()->route('login');
+        return redirect()->route('user.login.form');
 
         // if(\Auth::guard('customer')->attempt(
         //     [
