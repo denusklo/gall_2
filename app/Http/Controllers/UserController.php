@@ -43,7 +43,7 @@ class UserController extends Controller
             return redirect()->intended('home');
         }
 
-        return redirect()->route('user.login.form');
+        return redirect()->route('user.login.form')->with('error', 'User not found');
 
         // if(\Auth::guard('customer')->attempt(
         //     [
