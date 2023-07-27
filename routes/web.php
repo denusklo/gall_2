@@ -50,9 +50,7 @@ Route::prefix('firebase')->as('firebase.')->group( function ()
 
 });
 
-Route::middleware([
-    'firebase.auth',
-])->group(function() {    
+Route::middleware( ['firebase.auth'] )->group(function() {    
     
     Route::get('user/home', [App\Http\Controllers\RequestController::class, 'index'])->name('user.home');
     Route::resource('request', RequestController::class);
@@ -65,6 +63,12 @@ Route::middleware([
 
 });
 
+Route::prefix('api')->group( function() {
 
+    Route::get('login', function () {
+        return redirect()->route('user.login.form');
+    });
+
+});
 
 
