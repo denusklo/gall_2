@@ -63,12 +63,4 @@ Route::middleware( ['firebase.auth'] )->group(function() {
 
 });
 
-Route::prefix('api')->group( function() {
-
-    Route::get('login', function () {
-        return redirect()->route('user.login.form');
-    });
-
-});
-
 
