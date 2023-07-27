@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ApiController;
 use App\Http\Controllers\HomeController;
 
 /*
@@ -19,13 +20,10 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::get('login', function () {
-    return redirect()->route('user.login.form');
-});
-
 Route::prefix('v1')->group(function () {
     
-    Route::get('test', [HomeController::class, 'api'])->name('api.test');
+    Route::get('test', [ApiController::class, 'api'])->name('api.test');
+    Route::post('login', [ApiController::class, 'login'])->name('api.login');
 
 });
 
