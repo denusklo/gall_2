@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\Api\AuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -23,7 +24,11 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
 Route::prefix('v1')->group(function () {
     
     Route::get('test', [ApiController::class, 'api'])->name('api.test');
-    Route::post('login', [ApiController::class, 'login'])->name('api.login');
+    // Route::post('login', [ApiController::class, 'login'])->name('api.login');
+
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'user']);
+
 
 });
 
