@@ -15,10 +15,3 @@ yarn-error.log
 /.vscode
 
 .vercel
-
-/app/Http/Controllers/FirebaseKey.json
-/app/Http/Controllers/FirebaseKey_old.json
-/FirebaseKey_old_2.json
-/FirebaseKey_old.json
-
-/FirebaseKey_old_3.json
