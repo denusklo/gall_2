@@ -1,9 +1,3 @@
-@php
-    use App\Http\Controllers\FirebaseAuthController;
-    $authenticator =  new FirebaseAuthController;
-    $logged = $authenticator->authentication();
-@endphp
-
 <!doctype html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
@@ -27,7 +21,6 @@
     <link href="{{ asset('css/app.css') }}" rel="stylesheet">
 </head>
 <body>
-
     <div id="app">
         <nav class="navbar navbar-expand-md navbar-light bg-white shadow-sm">
             <div class="container">
@@ -41,20 +34,59 @@
                 <div class="collapse navbar-collapse" id="navbarSupportedContent">
                     <!-- Left Side Of Navbar -->
                     <ul class="navbar-nav mr-auto">
-
+                        @if(session()->has('verified_user_id'))
+                            @php
+                                $isAdmin = false;
+                                try {
+                                    $uid = session()->get('verified_user_id');
+                                    $auth = app('firebase.auth');
+                                    $user = $auth->getUser($uid);
+                                    $customClaims = $user->customClaims ?? [];
+                                    $isAdmin = isset($customClaims['admin']) && $customClaims['admin'] === true;
+                                } catch (\Exception $e) {
+                                    // Silently fail
+                                }
+                            @endphp
+                            
+                            <!-- Link visible to all authenticated users -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('request.index') }}">{{ __('My Requests') }}</a>
+                            </li>
+                            
+                            <!-- Image Gallery Link -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="#"> <!-- Add your route --> 
+                                    {{ __('Images') }}
+                                </a>
+                            </li>
+                            
+                            @if($isAdmin)
+                                <!-- Admin Only Links -->
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('users') }}">{{ __('Users') }}</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('admin.users') }}">{{ __('Manage Admins') }}</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('requests.index') }}">{{ __('All Requests') }}</a>
+                                </li>
+                            @endif
+                        @endif
                     </ul>
 
                     <!-- Right Side Of Navbar -->
                     <ul class="navbar-nav ml-auto">
                         <!-- Authentication Links -->
                         @guest
-                            @if (!session()->get('verified_user_id'))
+                            @if (!session()->has('verified_user_id'))
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ route('user.login.form') }}">{{ __('Login') }}</a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ route('user.create') }}">{{ __('Register') }}</a>
                                 </li>
+                                <li class="nav-item">
                                     <a class="nav-link" href="{{ route('firebase.login.form') }}">{{ __('Firebase Login') }}</a>
                                 </li>
                                 <li class="nav-item">
@@ -62,20 +94,12 @@
                                 </li>
                             @else
                                 <li class="nav-item">
-                                    @if ($logged)
-                                        <a href="{{route("user.edit")}}" class="nav-link">
-                                            <span>{{session()->get('displayName')}}</span>
-                                        </a>
-                                    @else
-                                        <span class="nav-link">{{session()->get('displayName')}}</span>
-                                    @endif
+                                    <a href="{{ route('user.edit') }}" class="nav-link">
+                                        <span>{{ session()->get('displayName') }}</span>
+                                    </a>
                                 </li>
                                 <li class="nav-item">
-                                    <form id="logout-form" action="{{ route('firebase.logout') }}" method="POST" >
-                                        <a class="nav-link" href="{{ route('firebase.logout') }}">{{ __('Logout') }}
-                                            @csrf
-                                        </a>
-                                    </form>
+                                    <a class="nav-link" href="{{ route('firebase.logout') }}">{{ __('Logout') }}</a>
                                 </li>
                             @endif
                         @else
@@ -88,11 +112,7 @@
                                     <a 
                                         class="dropdown-item" 
                                         href="{{ route('logout') }}"
-                                        onclick=
-                                        "
-                                            event.preventDefault();
-                                            document.getElementById('logout-form').submit();
-                                        "
+                                        onclick="event.preventDefault(); document.getElementById('logout-form').submit();"
                                     >
                                         {{ __('Logout') }}
                                     </a>

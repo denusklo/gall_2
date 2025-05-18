@@ -1,14 +1,15 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Kreait\Laravel\Firebase\Facades\FirebaseAuth;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\FirebaseController;
 use App\Http\Controllers\FirebaseAuthController;
 use App\Http\Controllers\FirebaseUserController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\HomeController;
-use Illuminate\Http\Request;
+use App\Http\Controllers\FirebaseAdminController;
+use Kreait\Laravel\Firebase\Facades\FirebaseAuth;
 
 
 /*
@@ -34,28 +35,34 @@ Route::middleware(['auth'])->group(function () {
 
 });
 
+Route::middleware(['guest'])->group(function () {
+    Route::get('register', [UserController::class, 'register'])->name('user.create');
+    Route::get('login', [UserController::class, 'showLoginForm'])->name('user.login.form');
+    Route::post('register', [UserController::class, 'create'])->name('user.store');
+    Route::post('login', [UserController::class, 'login'])->name('user.login');
+});
 
-Route::get('register', [UserController::class, 'register'])->name('user.create');
-Route::get('login', [UserController::class, 'showLoginForm'])->name('user.login.form');
-Route::post('register', [UserController::class, 'create'])->name('user.store');
-Route::post('login', [UserController::class, 'login'])->name('user.login');
-
-Route::prefix('firebase')->as('firebase.')->group( function () 
-{    
+Route::middleware(['guest'])->prefix('firebase')->as('firebase.')->group(function () {
     Route::get('/register', [FirebaseAuthController::class, 'register'])->name('create');
     Route::post('/register', [FirebaseAuthController::class, 'store'])->name('register');
     Route::get('/login', [FirebaseAuthController::class, 'showLoginForm'])->name('login.form');
     Route::post('/login', [FirebaseAuthController::class, 'login'])->name('login');
-    Route::get('/logout', [FirebaseAuthController::class, 'logout'])->name('logout');
+});
 
+Route::prefix('firebase')->as('firebase.')->group(function () {
+    Route::get('/logout', [FirebaseAuthController::class, 'logout'])->name('logout');
 });
 
 Route::middleware( ['firebase.auth'] )->group(function() {    
     
-    Route::get('user/home', [App\Http\Controllers\RequestController::class, 'index'])->name('user.home');
+    Route::get('home', [App\Http\Controllers\RequestController::class, 'index'])->name('user.home');
     Route::resource('request', RequestController::class);
+    Route::resource('requests', RequestsController::class);
 
-    Route::get('users', [FirebaseUserController::class, 'index'])->name('users');
+    Route::get('users', [FirebaseUserController::class, 'index'])
+        ->middleware('firebase.admin')
+        ->name('users');
+
     Route::get('user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
     Route::put('user/update', [FirebaseUserController::class, 'update'])->name('user.update');
     Route::any('user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
@@ -64,3 +71,8 @@ Route::middleware( ['firebase.auth'] )->group(function() {
 });
 
 
+Route::middleware(['firebase.auth', 'firebase.admin'])->prefix('admin')->group(function() {
+    Route::get('/users', [FirebaseAdminController::class, 'manageUsers'])->name('admin.users');
+    Route::post('/users/{uid}/make-admin', [FirebaseAdminController::class, 'makeAdmin'])->name('admin.make-admin');
+    Route::post('/users/{uid}/remove-admin', [FirebaseAdminController::class, 'removeAdmin'])->name('admin.remove-admin');
+});

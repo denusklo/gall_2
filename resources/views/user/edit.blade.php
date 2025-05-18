@@ -23,6 +23,8 @@
                         @method("PUT")
                         @csrf
 
+                        <input type="hidden" name='uid' value="{{$uid}}">
+
                         <div class="form-group row">
                             <label for="name" class="col-md-4 col-form-label text-md-right">{{ __('Display Name') }}</label>
 
