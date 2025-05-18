@@ -19,7 +19,7 @@
     "env": {
         "APP_NAME": "Gall-2",
         "APP_ENV": "production",
-        "APP_DEBUG": "false",
+        "APP_DEBUG": "true",
         "APP_URL": "https://gall-2.vercel.app/",
         
         "FIREBASE_DATABASE_URL": "https://usforus-3e70b-default-rtdb.asia-southeast1.firebasedatabase.app/",
@@ -34,8 +34,7 @@
         "VIEW_COMPILED_PATH": "/tmp",
 
         "CACHE_DRIVER": "array",
-        "LOG_CHANNEL": "stderr",
-        "FIREBASE_CREDENTIALS": "key.json"
+        "LOG_CHANNEL": "stderr"
     },
     "buildCommand": "npm run build"
 }
