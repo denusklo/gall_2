@@ -2,7 +2,7 @@
     "version": 2,
     "functions": {
         "api/index.php": { 
-            "runtime": "vercel-php@0.6.0",
+            "runtime": "vercel-php@0.7.3",
             "memory":1024
         }
     },
@@ -17,7 +17,7 @@
         }
     ],
     "env": {
-        "APP_NAME": "Request.io",
+        "APP_NAME": "Gall-2",
         "APP_ENV": "production",
         "APP_DEBUG": "true",
         "APP_URL": "https://gall-2.vercel.app/",
