@@ -1,0 +1,13 @@
+diff --git a/vercel.json b/vercel.json
+index b24fb3a..17e5866 100644
+--- a/vercel.json
++++ b/vercel.json
+@@ -19,7 +19,7 @@
+     "env": {
+         "APP_NAME": "Gall-2",
+         "APP_ENV": "production",
+-        "APP_DEBUG": "true",
++        "APP_DEBUG": "false",
+         "APP_URL": "https://gall-2.vercel.app/",
+         
+         "FIREBASE_DATABASE_URL": "https://usforus-3e70b-default-rtdb.asia-southeast1.firebasedatabase.app/",
