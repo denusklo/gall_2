@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+
 <head>
     <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
     <meta charset="utf-8">
@@ -17,58 +18,75 @@
     <link rel="dns-prefetch" href="//fonts.gstatic.com">
     <link href="https://fonts.googleapis.com/css?family=Nunito" rel="stylesheet">
 </head>
+
 <body>
     <div id="app">
         <nav class="navbar navbar-expand-md navbar-light bg-white shadow-sm">
             <div class="container">
-                <a class="navbar-brand" 
-                    href="{{ route('home') }}"
-                >
+                <a class="navbar-brand" href="{{ route('home') }}">
                     {{ __('Gall-2') }}
                 </a>
-                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="{{ __('Toggle navigation') }}">
+                <button class="navbar-toggler" type="button" data-toggle="collapse"
+                    data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
+                    aria-label="{{ __('Toggle navigation') }}">
                     <span class="navbar-toggler-icon"></span>
                 </button>
 
                 <div class="collapse navbar-collapse" id="navbarSupportedContent">
                     <!-- Left Side Of Navbar -->
                     <ul class="navbar-nav mr-auto">
-                        @if(session()->has('verified_user_id'))
+                        @if (session()->has('verified_user_id') || Auth::check())
                             @php
                                 $isAdmin = false;
-                                try {
-                                    $uid = session()->get('verified_user_id');
-                                    $auth = app('firebase.auth');
-                                    $user = $auth->getUser($uid);
-                                    $customClaims = $user->customClaims ?? [];
-                                    $isAdmin = isset($customClaims['admin']) && $customClaims['admin'] === true;
-                                } catch (\Exception $e) {
-                                    // Silently fail
+
+                                // Check for Firebase admin
+                                if (session()->has('verified_user_id')) {
+                                    try {
+                                        $uid = session()->get('verified_user_id');
+                                        $auth = app('firebase.auth');
+                                        $user = $auth->getUser($uid);
+                                        $customClaims = $user->customClaims ?? [];
+                                        $isAdmin = isset($customClaims['admin']) && $customClaims['admin'] === true;
+                                    } catch (\Exception $e) {
+                                        // Silently fail
+                                    }
+                                }
+
+                                // Check for native MySQL admin
+                                if (Auth::check() && !$isAdmin) {
+                                    $isAdmin = Auth::user()->is_admin == 1;
                                 }
                             @endphp
-                            
+
                             <!-- Link visible to all authenticated users -->
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ route('request.index') }}">{{ __('My Requests') }}</a>
                             </li>
-                            
+
+                            <!-- Galleries Link -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('galleries.index') }}">{{ __('Galleries') }}</a>
+                            </li>
+
                             <!-- Image Gallery Link -->
                             <li class="nav-item">
-                                <a class="nav-link" href="#"> <!-- Add your route --> 
+                                <a class="nav-link" href="#"> <!-- Add your route -->
                                     {{ __('Images') }}
                                 </a>
                             </li>
-                            
-                            @if($isAdmin)
+
+                            @if ($isAdmin)
                                 <!-- Admin Only Links -->
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ route('users') }}">{{ __('Users') }}</a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('admin.users') }}">{{ __('Manage Admins') }}</a>
+                                    <a class="nav-link"
+                                        href="{{ route('admin.users') }}">{{ __('Manage Admins') }}</a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('requests.index') }}">{{ __('All Requests') }}</a>
+                                    <a class="nav-link"
+                                        href="{{ route('requests.index') }}">{{ __('All Requests') }}</a>
                                 </li>
                             @endif
                         @endif
@@ -86,10 +104,12 @@
                                     <a class="nav-link" href="{{ route('user.create') }}">{{ __('Register') }}</a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('firebase.login.form') }}">{{ __('Firebase Login') }}</a>
+                                    <a class="nav-link"
+                                        href="{{ route('firebase.login.form') }}">{{ __('Firebase Login') }}</a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('firebase.create') }}">{{ __('Firebase Register') }}</a>
+                                    <a class="nav-link"
+                                        href="{{ route('firebase.create') }}">{{ __('Firebase Register') }}</a>
                                 </li>
                             @else
                                 <li class="nav-item">
@@ -103,16 +123,14 @@
                             @endif
                         @else
                             <li class="nav-item dropdown">
-                                <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
+                                <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button"
+                                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
                                     {{ Auth::user()->name }}
                                 </a>
 
                                 <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
-                                    <a 
-                                        class="dropdown-item" 
-                                        href="{{ route('logout') }}"
-                                        onclick="event.preventDefault(); document.getElementById('logout-form').submit();"
-                                    >
+                                    <a class="dropdown-item" href="{{ route('logout') }}"
+                                        onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
                                         {{ __('Logout') }}
                                     </a>
 
@@ -136,4 +154,5 @@
     {{-- <script src="{{ mix('js/app.js') }}" defer></script> --}}
     @yield('scripts')
 </body>
-</html> 
+
+</html>
