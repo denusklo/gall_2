@@ -1,7 +1,6 @@
 // resources/js/stores/gallery.js
 import { defineStore } from 'pinia';
 import axios from 'axios';
-import { put, generateClientToken } from '@vercel/blob/client';
 
 export const useGalleryStore = defineStore('gallery', {
   state: () => ({
@@ -51,58 +50,35 @@ export const useGalleryStore = defineStore('gallery', {
       }
     },
 
-    // Modified uploadFile method using Vercel Blob client
+    // In your Vue/React component
     async uploadFile(file, title, description = '', categoryId = null) {
       this.loading = true;
       this.uploadProgress = 0;
 
-      const token = await generateClientToken({
-        pathname,
-        allowedContentTypes: allowedTypes,
-        addRandomSuffix: true
-      });
-
-
       try {
-        // First get a blob token from our backend
-        const tokenResponse = await axios.post('/apiv/_1/blob/generate-token', {
-          filename: file.name,
-          contentType: file.type,
-        });
+        // Create form data for the backend upload
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', title);
+        formData.append('description', description || '');
+        if (categoryId) formData.append('category_id', categoryId);
 
-        if (!tokenResponse.data || !tokenResponse.data.tokenPayload) {
-          throw new Error('Failed to get upload token');
-        }
-
-        // Upload directly to Vercel Blob using the client SDK
-        const blob = await put(file.name, file, {
-          access: 'public',
-          handleUploadUrl: '/apiv/_1/blob/handle-upload',
-          clientPayload: tokenResponse.data.tokenPayload,
-          token: token,
-          onProgress: (progress) => {
-            this.uploadProgress = Math.round(progress * 100);
+        // Send to our backend endpoint (now handles the Supabase upload)
+        const response = await axios.post('/apiv/_1/galleries/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
           },
+          onUploadProgress: (progressEvent) => {
+            this.uploadProgress = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+          }
         });
-
-        // Now store the metadata in our database
-        const galleryData = {
-          title,
-          description,
-          category_id: categoryId,
-          blob_url: blob.url,
-          blob_id: blob.pathname.split('/').pop(), // Extract ID from pathname
-          filename: file.name,
-          mime_type: file.type,
-          size: file.size,
-        };
-
-        const response = await axios.post('/apiv/_1/galleries', galleryData);
 
         // Add the new gallery to the list
         this.galleries.unshift(response.data);
         this.error = null;
-
+        
         return response.data;
       } catch (error) {
         console.error('Error uploading file:', error);
@@ -142,6 +118,7 @@ export const useGalleryStore = defineStore('gallery', {
         throw error;
       }
     },
+
     async fetchStats() {
       try {
         const response = await axios.get('/apiv/_1/galleries/stats');
@@ -152,6 +129,7 @@ export const useGalleryStore = defineStore('gallery', {
         // Don't set error state to avoid disrupting UI if stats fetch fails
       }
     },
+
     setActiveCategory(categoryId) {
       this.activeCategory = categoryId;
     }

@@ -153,9 +153,6 @@ const initialize = async () => {
         if (categoryStore.categories.length === 0) {
             await categoryStore.fetchCategories();
         }
-        console.log('Categories after fetch:', categoryStore.categories);
-        console.log('Type of categories:', typeof categoryStore.categories);
-        console.log('Is array?', Array.isArray(categoryStore.categories));
     } catch (error) {
         console.error('Error initializing:', error);
     }

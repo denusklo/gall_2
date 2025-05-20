@@ -1,6 +1,6 @@
 <!-- resources/js/components/Gallery/GalleryDetail.vue -->
 <template>
-    <div class="modal-backdrop" @click="$emit('close')">
+    <div class="modal-backdrop" @click.self="$emit('close')">
         <div class="modal-content" @click.stop>
             <div class="modal-header">
                 <h3>{{ gallery.title }}</h3>

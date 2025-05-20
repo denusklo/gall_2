@@ -1,43 +1,59 @@
-<!-- resources/js/components/Gallery/GalleryItem.vue -->
+<!-- Replace the entire template section in GalleryItem.vue -->
 <template>
-    <div class="gallery-item" @click="showDetail = true">
-        <div class="gallery-image">
-            <img :src="gallery.blob_url" :alt="gallery.title" loading="lazy" />
-        </div>
-        <div class="gallery-info">
-            <h3>{{ gallery.title }}</h3>
-            <p v-if="gallery.description && gallery.description.length <= 50" class="description">
-                {{ gallery.description }}
-            </p>
-            <p v-else-if="gallery.description" class="description">
-                {{ gallery.description.substring(0, 50) }}...
-            </p>
-            <!-- resources/js/components/Gallery/GalleryItem.vue - Add to the gallery-info section -->
-            <p v-if="gallery.category" class="gallery-category">
-                <span class="category-badge">{{ gallery.category.name }}</span>
-            </p>
-            <p class="gallery-meta">
-                <small>{{ formatFileSize(gallery.size) }} | {{ formatDate(gallery.created_at) }}</small>
-            </p>
-            <div class="gallery-actions" @click.stop>
-                <button @click="$emit('edit', gallery)" class="btn btn-sm btn-outline-primary">
-                    Edit
-                </button>
-                <button @click="confirmDelete" class="btn btn-sm btn-outline-danger">
-                    Delete
-                </button>
+    <div class="gallery-item">
+        <!-- Add a div that handles the click event with stopPropagation -->
+        <div class="gallery-item-inner" @click.stop="handleItemClick">
+            <div class="gallery-image">
+                <img 
+                    :src="imageUrl" 
+                    :alt="gallery.title" 
+                    loading="lazy" 
+                    @error="handleImageError"
+                    onerror="this.onerror=null; this.src='https://placehold.co/400';"
+                />
+            </div>
+            <div class="gallery-info">
+                <h3>{{ gallery.title }}</h3>
+                <p v-if="gallery.description && gallery.description.length <= 50" class="description">
+                    {{ gallery.description }}
+                </p>
+                <p v-else-if="gallery.description" class="description">
+                    {{ gallery.description.substring(0, 50) }}...
+                </p>
+                <p v-if="gallery.category" class="gallery-category">
+                    <span class="category-badge">{{ gallery.category.name }}</span>
+                </p>
+                <p class="gallery-meta">
+                    <small>{{ formatFileSize(gallery.size) }} | {{ formatDate(gallery.created_at) }}</small>
+                </p>
+                <div class="gallery-actions" @click.stop>
+                    <button @click.stop="$emit('edit', gallery)" class="btn btn-sm btn-outline-primary">
+                        Edit
+                    </button>
+                    <button @click.stop="confirmDelete" class="btn btn-sm btn-outline-danger">
+                        Delete
+                    </button>
+                </div>
             </div>
         </div>
 
-        <gallery-detail v-if="showDetail" :gallery="gallery" @close="showDetail = false" @edit="$emit('edit', gallery)"
-            @delete="$emit('delete', $event)" />
+        <!-- Use Teleport to render the modal outside the gallery-item DOM -->
+        <teleport to="body" v-if="showDetail">
+            <gallery-detail 
+                :gallery="gallery" 
+                @close="closeDetail" 
+                @edit="$emit('edit', gallery)"
+                @delete="$emit('delete', $event)" 
+            />
+        </teleport>
     </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { defineProps, defineEmits } from 'vue';
 import GalleryDetail from './GalleryDetail.vue';
+import axios from 'axios'; // Make sure axios is imported
 
 const props = defineProps({
     gallery: {
@@ -48,6 +64,53 @@ const props = defineProps({
 
 const emit = defineEmits(['edit', 'delete']);
 const showDetail = ref(false);
+const refreshedUrl = ref(null);
+const urlError = ref(false);
+const supabaseUrl = ref(''); // Store the URL in a ref
+
+const fetchSupabaseUrl = async () => {
+    // First check localStorage
+    const cachedUrl = localStorage.getItem('supabaseUrl');
+    if (cachedUrl) {
+        supabaseUrl.value = cachedUrl;
+        return;
+    }
+    
+    try {
+        const response = await axios.get('/apiv/_1/config/supabase-url');
+        supabaseUrl.value = response.data.url;
+        
+        // Save to localStorage for future use
+        localStorage.setItem('supabaseUrl', response.data.url);
+    } catch (error) {
+        console.error('Failed to fetch Supabase URL:', error);
+    }
+};
+
+onMounted(fetchSupabaseUrl);
+
+const imageUrl = computed(() => {
+    // If we have a refreshed URL from a recent API call, use that
+    if (refreshedUrl.value) {
+        return refreshedUrl.value;
+    }
+    
+    // Otherwise, check if the stored URL needs the Supabase base URL
+    const storedUrl = props.gallery.storage_url || '';
+    
+    // If the URL starts with http or https, assume it's a complete URL
+    if (storedUrl.startsWith('http://') || storedUrl.startsWith('https://')) {
+        return storedUrl;
+    }
+    
+    // If no Supabase URL is available yet (still loading), use a placeholder
+    if (!supabaseUrl.value) {
+        return 'https://placehold.co/400';
+    }
+    
+    // If not, prepend the Supabase URL
+    return `${supabaseUrl.value}/storage/v1${storedUrl.startsWith('/') ? '' : '/'}${storedUrl}`;
+});
 
 const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
@@ -67,6 +130,39 @@ const confirmDelete = () => {
         emit('delete', props.gallery.id);
     }
 };
+
+// Image error handling
+const handleImageError = async () => {
+    if (!urlError.value) {
+        urlError.value = true;
+        await refreshImageUrl();
+    }
+};
+
+const refreshImageUrl = async () => {
+    try {
+        const response = await axios.get(`/apiv/_1/galleries/${props.gallery.id}/signed-url`);
+        
+        // Check the actual structure of the response
+        if (response.data && response.data.signedUrl) {
+            refreshedUrl.value = response.data.signedUrl;
+        } else {
+            console.error('Signed URL not found in response:', response.data);
+        }
+    } catch (error) {
+        console.error('Failed to refresh image URL:', error);
+    }
+};
+
+// New methods to handle the modal properly
+const handleItemClick = () => {
+    // Using nextTick ensures the DOM updates are complete before opening the modal
+    showDetail.value = true;
+};
+
+const closeDetail = () => {
+    showDetail.value = false;
+};
 </script>
 
 <style scoped>
@@ -75,8 +171,12 @@ const confirmDelete = () => {
     border-radius: 8px;
     overflow: hidden;
     transition: transform 0.2s;
-    cursor: pointer;
     background-color: white;
+}
+
+/* Make the inner content the clickable part */
+.gallery-item-inner {
+    cursor: pointer;
 }
 
 .gallery-item:hover {

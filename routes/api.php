@@ -4,10 +4,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\BlobController;
+use App\Http\Controllers\Api\GalleryController;
 use App\Http\Controllers\Api\CategoryController;
-use App\Http\Controllers\Api\BlobUploadController;
-use App\Http\Controllers\Api\GalleryApiController;
+use App\Http\Controllers\Api\GalleryStorageController;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,30 +24,40 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
 });
 
 Route::prefix('_1')->group(function () {
-    
+
     Route::get('test', [ApiController::class, 'api'])->name('api.test');
-    
+
     Route::post('/login', [AuthController::class, 'login']);
     Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'user']);
 
-    // Public routes
-    
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
-        Route::post('galleries/upload', [GalleryApiController::class, 'upload']);
-        Route::get('galleries/stats', [GalleryApiController::class, 'stats']);
-        Route::apiResource('galleries', GalleryApiController::class);
-        Route::post('/upload-blob', [BlobUploadController::class, 'getUploadUrl']);
-        Route::apiResource('categories', CategoryController::class);
 
-        Route::prefix('blob')->group(function () {
-            Route::post('/generate-token', [BlobController::class, 'generateToken']);
-            Route::post('/handle-upload', [BlobController::class, 'handleUpload']);
-            Route::post('/upload-completed', [BlobController::class, 'uploadCompleted']);
-            Route::post('/upload-url', [BlobController::class, 'getUploadUrl']); // Add this new route
+        Route::post('storage/generate-upload-url', [GalleryStorageController::class, 'generateUploadUrl']);
+        Route::get('storage/check-bucket', [GalleryStorageController::class, 'checkBucket']);
+        Route::delete('storage/delete-file', [GalleryStorageController::class, 'deleteFile']);
+
+        // Gallery endpoints
+        Route::get('galleries', [GalleryController::class, 'index']);
+        Route::post('galleries', [GalleryController::class, 'store']);
+        Route::get('galleries/stats', [GalleryController::class, 'stats']);
+        Route::get('galleries/{id}', [GalleryController::class, 'show']);
+        Route::put('galleries/{id}', [GalleryController::class, 'update']);
+        Route::delete('galleries/{id}', [GalleryController::class, 'destroy']);
+        Route::post('galleries/upload', [GalleryController::class, 'upload']);
+        Route::get('galleries/{id}/signed-url', [GalleryController::class, 'refreshSignedUrl']);
+
+        Route::apiResource('categories', CategoryController::class);
+    });
+
+    Route::get('config/supabase-url', function () {
+        $url = Cache::remember('supabase_url', 86400, function () {
+            return config('services.supabase.url');
         });
-        // Add this to your routes/api.php
-        Route::get('/blob/check-config', [App\Http\Controllers\Api\BlobConfigCheckController::class, 'check']);
+
+        return response()->json(['url' => $url])
+            ->header('Cache-Control', 'public, max-age=86400')
+            ->header('Expires', gmdate('D, d M Y H:i:s', time() + 86400) . ' GMT');
     });
 });
 

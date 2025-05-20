@@ -32,9 +32,6 @@ export const useCategoryStore = defineStore('category', {
           ? response.data
           : (response.data.data || []); // Try to get data array if response is an object
 
-        console.log('API response:', response.data);
-        console.log('Categories after processing:', this.categories);
-
         this.error = null;
       } catch (error) {
         this.error = error.response?.data?.message || 'Failed to fetch categories';

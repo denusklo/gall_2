@@ -69,15 +69,9 @@
     <!-- resources/js/components/Gallery/GalleryIndex.vue - Add at the end before the closing div -->
     <loading-overlay :show="galleryStore.loading && !hasGalleries" message="Loading galleries..." />
     <!-- resources/js/components/Gallery/GalleryIndex.vue - Add before the closing div -->
-<confirm-dialog
-  :show="showDeleteConfirm"
-  title="Delete Image"
-  message="Are you sure you want to delete this image? This action cannot be undone."
-  confirm-text="Delete"
-  type="danger"
-  @confirm="confirmDelete"
-  @cancel="cancelDelete"
-/>
+    <confirm-dialog :show="showDeleteConfirm" title="Delete Image"
+        message="Are you sure you want to delete this image? This action cannot be undone." confirm-text="Delete"
+        type="danger" @confirm="confirmDelete" @cancel="cancelDelete" />
 </template>
 
 <script setup>
@@ -169,24 +163,24 @@ const onCategoryChanged = (categoryId) => {
 };
 
 const confirmDelete = async () => {
-  if (galleryToDelete.value) {
-    await galleryStore.deleteGallery(galleryToDelete.value);
-    
-    // If we deleted the last item on the current page, go to previous page
-    if (galleryStore.galleries.length === 0 && galleryStore.pagination.currentPage > 1) {
-      changePage(galleryStore.pagination.currentPage - 1);
-    } else {
-      refreshGallery();
+    if (galleryToDelete.value) {
+        await galleryStore.deleteGallery(galleryToDelete.value);
+
+        // If we deleted the last item on the current page, go to previous page
+        if (galleryStore.galleries.length === 0 && galleryStore.pagination.currentPage > 1) {
+            changePage(galleryStore.pagination.currentPage - 1);
+        } else {
+            refreshGallery();
+        }
+
+        showDeleteConfirm.value = false;
+        galleryToDelete.value = null;
     }
-    
-    showDeleteConfirm.value = false;
-    galleryToDelete.value = null;
-  }
 };
 
 const cancelDelete = () => {
-  showDeleteConfirm.value = false;
-  galleryToDelete.value = null;
+    showDeleteConfirm.value = false;
+    galleryToDelete.value = null;
 };
 
 </script>
@@ -208,6 +202,7 @@ h1 {
     margin-bottom: 20px;
     display: flex;
     justify-content: flex-end;
+    column-gap: 0.5rem;
 }
 
 .gallery-grid {
