@@ -36,7 +36,7 @@ export const useGalleryStore = defineStore('gallery', {
           category_id: filters.categoryId || this.activeCategory || ''
         };
 
-        const response = await axios.get('/api/v1/galleries', { params });
+        const response = await axios.get('/apiv/_1/galleries', { params });
 
         this.galleries = response.data.data;
         this.pagination.currentPage = response.data.current_page;
@@ -65,7 +65,7 @@ export const useGalleryStore = defineStore('gallery', {
 
       try {
         // First get a blob token from our backend
-        const tokenResponse = await axios.post('/api/v1/blob/generate-token', {
+        const tokenResponse = await axios.post('/apiv/_1/blob/generate-token', {
           filename: file.name,
           contentType: file.type,
         });
@@ -77,7 +77,7 @@ export const useGalleryStore = defineStore('gallery', {
         // Upload directly to Vercel Blob using the client SDK
         const blob = await put(file.name, file, {
           access: 'public',
-          handleUploadUrl: '/api/v1/blob/handle-upload',
+          handleUploadUrl: '/apiv/_1/blob/handle-upload',
           clientPayload: tokenResponse.data.tokenPayload,
           token: token,
           onProgress: (progress) => {
@@ -97,7 +97,7 @@ export const useGalleryStore = defineStore('gallery', {
           size: file.size,
         };
 
-        const response = await axios.post('/api/v1/galleries', galleryData);
+        const response = await axios.post('/apiv/_1/galleries', galleryData);
 
         // Add the new gallery to the list
         this.galleries.unshift(response.data);
@@ -116,7 +116,7 @@ export const useGalleryStore = defineStore('gallery', {
 
     async deleteGallery(id) {
       try {
-        await axios.delete(`/api/v1/galleries/${id}`);
+        await axios.delete(`/apiv/_1/galleries/${id}`);
         this.galleries = this.galleries.filter(gallery => gallery.id !== id);
         this.error = null;
       } catch (error) {
@@ -127,7 +127,7 @@ export const useGalleryStore = defineStore('gallery', {
 
     async updateGallery(id, data) {
       try {
-        const response = await axios.put(`/api/v1/galleries/${id}`, data);
+        const response = await axios.put(`/apiv/_1/galleries/${id}`, data);
         const index = this.galleries.findIndex(gallery => gallery.id === id);
 
         if (index !== -1) {
@@ -144,7 +144,7 @@ export const useGalleryStore = defineStore('gallery', {
     },
     async fetchStats() {
       try {
-        const response = await axios.get('/api/v1/galleries/stats');
+        const response = await axios.get('/apiv/_1/galleries/stats');
         this.stats = response.data;
         this.error = null;
       } catch (error) {

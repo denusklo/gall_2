@@ -24,7 +24,7 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::prefix('v1')->group(function () {
+Route::prefix('_1')->group(function () {
     
     Route::get('test', [ApiController::class, 'api'])->name('api.test');
     
@@ -48,10 +48,10 @@ Route::prefix('v1')->group(function () {
             Route::post('/upload-url', [BlobController::class, 'getUploadUrl']); // Add this new route
         });
         // Add this to your routes/api.php
-        Route::get('/blob/check-config', [App\Http\Controllers\Api\V1\BlobConfigCheckController::class, 'check']);
+        Route::get('/blob/check-config', [App\Http\Controllers\Api\BlobConfigCheckController::class, 'check']);
     });
 });
 
-Route::prefix('v2')->group(function () {
+Route::prefix('_2')->group(function () {
     // or here to access the v2 of your api
 });

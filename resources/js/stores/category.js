@@ -26,7 +26,7 @@ export const useCategoryStore = defineStore('category', {
     async fetchCategories() {
       this.loading = true;
       try {
-        const response = await axios.get('/api/v1/categories');
+        const response = await axios.get('/apiv/_1/categories');
         // Ensure we're working with an array
         this.categories = Array.isArray(response.data)
           ? response.data
@@ -48,7 +48,7 @@ export const useCategoryStore = defineStore('category', {
     async createCategory(data) {
       this.loading = true;
       try {
-        const response = await axios.post('/api/v1/categories', data);
+        const response = await axios.post('/apiv/_1/categories', data);
         this.categories.push(response.data);
         this.categories.sort((a, b) => a.name.localeCompare(b.name));
         this.error = null;
@@ -65,7 +65,7 @@ export const useCategoryStore = defineStore('category', {
     async updateCategory(id, data) {
       this.loading = true;
       try {
-        const response = await axios.put(`/api/v1/categories/${id}`, data);
+        const response = await axios.put(`/apiv/_1/categories/${id}`, data);
         const index = this.categories.findIndex(category => category.id === id);
 
         if (index !== -1) {
@@ -87,7 +87,7 @@ export const useCategoryStore = defineStore('category', {
     async deleteCategory(id) {
       this.loading = true;
       try {
-        await axios.delete(`/api/v1/categories/${id}`);
+        await axios.delete(`/apiv/_1/categories/${id}`);
         this.categories = this.categories.filter(category => category.id !== id);
         this.error = null;
       } catch (error) {

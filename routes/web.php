@@ -35,7 +35,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/galleries', [App\Http\Controllers\GalleryController::class, 'index'])->name('galleries.index');
 });
 
-Route::middleware('auth')->get('/api/token', function (Request $request) {
+Route::middleware('auth')->get('/apiv/_1/token', function (Request $request) {
     return response()->json([
         'token' => session('api_token') ?? $request->user()->createToken('auth-token')->plainTextToken
     ]);

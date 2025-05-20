@@ -15,7 +15,7 @@ const pinia = createPinia();
 // Function to get API token for authenticated requests
 async function getApiToken() {
     try {
-        const response = await axios.get('/api/token');
+        const response = await axios.get('/apiv/_1/token');
         const token = response.data.token;
         localStorage.setItem('api_token', token);
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
