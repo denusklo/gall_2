@@ -3,8 +3,10 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ApiController;
-use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\GalleryApiController;
+use App\Http\Controllers\Api\BlobUploadController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,12 +26,20 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
 Route::prefix('v1')->group(function () {
     
     Route::get('test', [ApiController::class, 'api'])->name('api.test');
-    // Route::post('login', [ApiController::class, 'login'])->name('api.login');
-
+    
     Route::post('/login', [AuthController::class, 'login']);
     Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'user']);
 
-
+    // Public routes
+    
+    // Protected routes
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::apiResource('galleries', GalleryApiController::class);
+        Route::post('galleries/upload', [GalleryApiController::class, 'upload']);
+        Route::get('galleries/stats', [GalleryApiController::class, 'stats']);
+        Route::post('/upload-blob', [BlobUploadController::class, 'getUploadUrl']);
+        Route::apiResource('categories', CategoryController::class);
+    });
 });
 
 Route::prefix('v2')->group(function () {

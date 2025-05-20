@@ -27,6 +27,7 @@ return [
     */
 
     'env' => env('APP_ENV', 'production'),
+    'mix_hot' => env('MIX_HOT', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -175,7 +176,8 @@ return [
         App\Providers\EventServiceProvider::class,
         App\Providers\RouteServiceProvider::class,
 
-        Kreait\Laravel\Firebase\ServiceProvider::class
+        Kreait\Laravel\Firebase\ServiceProvider::class,
+        App\Providers\VercelBlobServiceProvider::class,
 
     ],
 

@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Http\Controllers\FirebaseAuthController;
+use App\Http\Controllers\Firebase\FirebaseAuthController;
 
 class RedirectIfAuthenticated
 {
@@ -24,14 +24,14 @@ class RedirectIfAuthenticated
         // Check Laravel auth
         foreach ($guards as $guard) {
             if (Auth::guard($guard)->check()) {
-                return redirect()->route('home');
+                return redirect()->route('home'); // Now safe to use route name
             }
         }
         
         // Check Firebase auth
         $firebaseAuth = new FirebaseAuthController();
         if ($firebaseAuth->authentication()) {
-            return redirect()->route('user.home');
+            return redirect()->route('home');
         }
 
         return $next($request);

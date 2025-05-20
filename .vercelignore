@@ -1,1 +1,52 @@
+# Dependencies
+/node_modules
 /vendor
+
+# Development files
+/.git
+/.github
+/.vscode
+/.idea
+/.fleet
+
+# Build artifacts (let Vercel build these)
+/public/js
+/public/css
+/public/mix-manifest.json
+
+# Test files
+/tests
+/phpunit.xml
+
+# Package manager files
+/.npm
+/.pnpm-store
+pnpm-lock.yaml
+yarn.lock
+composer.lock
+
+# Environment files
+.env
+.env.*
+.env.example
+
+# Logs
+/storage/logs
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Local storage
+/storage/app/public
+/storage/framework/cache
+/storage/framework/sessions
+/storage/framework/views
+
+# Docker
+/docker
+docker-compose*.yml
+
+# Documentation and misc
+README.md
+CHANGELOG.md
+LICENSE

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Firebase;
 
 // namespace Lcobucci\JWT;
 
@@ -17,6 +17,8 @@ use Kreait\Firebase\ServiceAccount;
 use Firebase\Auth\Token\Exception\InvalidToken;
 use Firebase\Auth\Token;
 use phpDocumentor\Reflection\Location;
+use Illuminate\Routing\Controller;
+
 
 class FirebaseAuthController extends Controller
 {
@@ -77,17 +79,17 @@ class FirebaseAuthController extends Controller
 
         try {
             $user = $auth->createUser($userProperties);
+            
+            if ($user) {
+                return redirect()->route('firebase.register')->with('success', "User created/registered successfully");
+            } else {
+                return redirect()->route('firebase.register')->with('error', "User not created/registered.");
+            }
         } catch (Exception $e) {
             return redirect()->route('firebase.register')->withInput()->with('error', "User not created/registered. " . $e->getMessage());
         }
-
-        if ($user) {
-            return redirect()->route('firebase.register')->with('success', "User created/registered successfully");
-        } else {
-            return redirect()->route('firebase.register')->with('error', "User not created/registered. " . $e->getMessage());
-        }
     }
-
+    
     public function login(Request $request)
     {
         // dd($this->auth);

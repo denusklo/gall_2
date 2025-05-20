@@ -1,9 +1,10 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Firebase;
 
 use Illuminate\Http\Request;
 use Kreait\Firebase\Factory;
+use Illuminate\Routing\Controller;
 
 class FirebaseAdminController extends Controller
 {

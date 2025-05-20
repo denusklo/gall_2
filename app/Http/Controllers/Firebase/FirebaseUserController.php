@@ -1,8 +1,9 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Firebase;
 
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
 class FirebaseUserController extends Controller
 {
