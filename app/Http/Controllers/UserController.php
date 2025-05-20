@@ -39,27 +39,17 @@ class UserController extends Controller
         $credentials = $request->only('email', 'password');
 
         if (Auth::guard('web')->attempt($credentials)) {
-            // Authentication passed...
+            // Generate token for API access
+            $user = Auth::user();
+            $token = $user->createToken('auth-token')->plainTextToken;
+            
+            // Store token in session for JavaScript to access
+            session(['api_token' => $token]);
+            
             return redirect()->intended('home');
         }
 
         return redirect()->route('user.login.form')->with('error', 'User not found');
-
-        // if(\Auth::guard('customer')->attempt(
-        //     [
-        //         'email' => $request->email,
-        //         'password' => $request->password,
-        //     ], $request->get('remember')
-        // ))
-        // {
-        //     if(\Auth::guard('customer')->user()->is_active == 0)
-        //     {
-        //         \Auth::guard('customer')->logout();
-        //     }
-
-        //     return redirect()->route('customer.dashboard');
-        // }
-
     }
 
 }

@@ -1,17 +1,52 @@
+# Laravel
 /node_modules
 /public/hot
 /public/storage
+/public/js
+/public/css
+/public/mix-manifest.json
 /storage/*.key
 /vendor
 .env
+.env.*.php
+.env.local
 .env.backup
 .phpunit.result.cache
-docker-compose.override.yml
 Homestead.json
 Homestead.yaml
+
+# Logs
 npm-debug.log
 yarn-error.log
+yarn-debug.log
+pnpm-debug.log
+
+# Package managers
+/.npm
+/.pnpm-store
+.npmrc
+pnpm-lock.yaml
+
+# Editor directories and files
 /.idea
 /.vscode
+/.fleet
+/.phpstorm.meta.php
+/_ide_helper.php
+/_ide_helper_models.php
 
+# Deployment
 .vercel
+.netlify
+.serverless
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build files
+/public/build
+
+# PHP CS Fixer
+.php-cs-fixer.cache
+.php_cs.cache

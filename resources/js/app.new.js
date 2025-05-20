@@ -1,4 +1,4 @@
-// resources/js/app.js - Update with optimized loading and auth token retrieval
+// resources/js/app.js - Update with optimized loading
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import GalleryIndex from './components/Gallery/GalleryIndex.vue';
@@ -11,28 +11,11 @@ axios.defaults.headers.common['X-CSRF-TOKEN'] = document.querySelector('meta[nam
 // Create Pinia (the store)
 const pinia = createPinia();
 
-// Function to get API token for authenticated requests
-async function getApiToken() {
-    try {
-        const response = await axios.get('/api/token');
-        const token = response.data.token;
-        localStorage.setItem('api_token', token);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        return token;
-    } catch (error) {
-        console.error('Failed to get API token:', error);
-        return null;
-    }
-}
-
 // Create the gallery app when the DOM is loaded
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     const galleryElement = document.getElementById('gallery-app');
     
     if (galleryElement) {
-        // Try to get token before initializing app
-        await getApiToken();
-        
         const app = createApp(GalleryIndex);
         app.use(pinia);
         app.mount('#gallery-app');
@@ -43,8 +26,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             error => {
                 // Handle 401 Unauthorized responses
                 if (error.response && error.response.status === 401) {
-                    // Clear token and redirect to login
-                    localStorage.removeItem('api_token');
                     window.location.href = '/login';
                     return Promise.reject(error);
                 }
@@ -60,22 +41,3 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
     }
 });
-
-// Add a function to check token on page load/refresh
-function setupTokenRefresh() {
-    // Check for existing token
-    const token = localStorage.getItem('api_token');
-    if (token) {
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    }
-    
-    // Set up token refresh for future page changes
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            getApiToken();
-        }
-    });
-}
-
-// Initialize token handling
-setupTokenRefresh();

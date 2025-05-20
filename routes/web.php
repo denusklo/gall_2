@@ -5,10 +5,10 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\UserController;
-use App\Http\Controllers\FirebaseController;
-use App\Http\Controllers\FirebaseAuthController;
-use App\Http\Controllers\FirebaseUserController;
-use App\Http\Controllers\FirebaseAdminController;
+use App\Http\Controllers\Firebase\FirebaseController;
+use App\Http\Controllers\Firebase\FirebaseAuthController;
+use App\Http\Controllers\Firebase\FirebaseUserController;
+use App\Http\Controllers\Firebase\FirebaseAdminController;
 use Kreait\Laravel\Firebase\Facades\FirebaseAuth;
 
 
@@ -29,10 +29,16 @@ Route::get('/', function () {
 
 Auth::routes();
 
-Route::middleware(['auth'])->group(function () {
-    
-    Route::get('home', [HomeController::class, 'index'])->name('home');
+Route::get('/home', [App\Http\Controllers\AuthDispatchController::class, 'dispatchHome'])->name('home');
 
+Route::middleware(['auth'])->group(function () {
+    Route::get('/galleries', [App\Http\Controllers\GalleryController::class, 'index'])->name('galleries.index');
+});
+
+Route::middleware('auth')->get('/api/token', function (Request $request) {
+    return response()->json([
+        'token' => session('api_token') ?? $request->user()->createToken('auth-token')->plainTextToken
+    ]);
 });
 
 Route::middleware(['guest'])->group(function () {
@@ -55,7 +61,7 @@ Route::prefix('firebase')->as('firebase.')->group(function () {
 
 Route::middleware( ['firebase.auth'] )->group(function() {    
     
-    Route::get('home', [App\Http\Controllers\RequestController::class, 'index'])->name('user.home');
+    // Route::get('home', [App\Http\Controllers\RequestController::class, 'index'])->name('home');
     Route::resource('request', RequestController::class);
     Route::resource('requests', RequestsController::class);
 
