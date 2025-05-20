@@ -13,10 +13,12 @@ use Illuminate\Support\Facades\DB;
 class GalleryController extends Controller {
     protected $supabaseUrl;
     protected $supabaseKey;
+    protected $supabaseServiceKey;
 
     public function __construct() {
         $this->supabaseUrl = config('services.supabase.url');
         $this->supabaseKey = config('services.supabase.key');
+        $this->supabaseServiceKey = config('services.supabase.service_key');
     }
 
     /**
@@ -269,61 +271,40 @@ class GalleryController extends Controller {
             // Get the file from the request
             $file = $request->file('file');
             $filename = time() . '_' . $file->getClientOriginalName();
+            
+            // Get file contents
+            $fileContents = file_get_contents($file->getRealPath());
 
-            // Set up Supabase client with service role key
-            $supabaseUrl = config('services.supabase.url');
-            $supabaseKey = config('services.supabase.service_key');
+            // First, upload the file using Laravel's HTTP Client
+            $uploadResponse = Http::withHeaders([
+                'Content-Type' => $file->getMimeType(),
+                'apikey' => $this->supabaseServiceKey,
+                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
+            ])->withBody(
+                $fileContents, $file->getMimeType()
+            )->post(
+                $this->supabaseUrl . '/storage/v1/object/gallery-uploads/' . $filename
+            );
 
-            // Create temporary file path
-            $tempPath = $file->getRealPath();
-
-            // First, upload the file
-            $ch = curl_init();
-            $uploadUrl = $supabaseUrl . '/storage/v1/object/gallery-uploads/' . $filename;
-
-            curl_setopt($ch, CURLOPT_URL, $uploadUrl);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents($tempPath));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: ' . $file->getMimeType(),
-                'apikey: ' . $supabaseKey,
-                'Authorization: Bearer ' . $supabaseKey
-            ]);
-
-            $uploadResponse = curl_exec($ch);
-            $uploadStatusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($uploadStatusCode < 200 || $uploadStatusCode >= 300) {
-                throw new \Exception('Failed to upload to Supabase: ' . $uploadResponse);
+            if (!$uploadResponse->successful()) {
+                throw new \Exception('Failed to upload to Supabase: ' . $uploadResponse->body());
             }
 
             // Now generate a signed URL for the file
-            $ch = curl_init();
-            $signUrl = $supabaseUrl . '/storage/v1/object/sign/gallery-uploads/' . $filename;
+            $signResponse = Http::withHeaders([
+                'Content-Type' => 'application/json',
+                'apikey' => $this->supabaseServiceKey,
+                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
+            ])->post(
+                $this->supabaseUrl . '/storage/v1/object/sign/gallery-uploads/' . $filename,
+                ['expiresIn' => 604800] // 7 days
+            );
 
-            curl_setopt($ch, CURLOPT_URL, $signUrl);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-                'expiresIn' => 604800, // 7 days
-            ]));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json',
-                'apikey: ' . $supabaseKey,
-                'Authorization: Bearer ' . $supabaseKey
-            ]);
-
-            $signResponse = curl_exec($ch);
-            $signStatusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($signStatusCode < 200 || $signStatusCode >= 300) {
-                throw new \Exception('Failed to generate signed URL: ' . $signResponse);
+            if (!$signResponse->successful()) {
+                throw new \Exception('Failed to generate signed URL: ' . $signResponse->body());
             }
 
-            $signData = json_decode($signResponse, true);
+            $signData = $signResponse->json();
             $signedUrl = $signData['signedURL'];
 
             // Save to database
@@ -332,7 +313,7 @@ class GalleryController extends Controller {
             $gallery->title = $request->title;
             $gallery->description = $request->description;
             $gallery->category_id = $request->category_id;
-            $gallery->storage_path = 'gallery-uploads/' . $filename;
+            $gallery->storage_path = $filename;
             $gallery->storage_bucket = 'gallery-uploads';
             $gallery->storage_url = $signedUrl; // Use the signed URL
             $gallery->filename = $file->getClientOriginalName();
@@ -350,36 +331,32 @@ class GalleryController extends Controller {
     public function refreshSignedUrl(Request $request, $galleryId) {
         $gallery = Gallery::findOrFail($galleryId);
 
-        // Set up Supabase client with service role key
-        $supabaseUrl = config('services.supabase.url');
-        $supabaseKey = config('services.supabase.service_key');
+        try {
+            // Make a request to Supabase to generate a signed URL
+            $path = $gallery->storage_path;
+            
+            $signResponse = Http::withHeaders([
+                'Content-Type' => 'application/json',
+                'apikey' => $this->supabaseServiceKey,
+                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
+            ])->post(
+                $this->supabaseUrl . '/storage/v1/object/sign/gallery-uploads/' . $path,
+                ['expiresIn' => 604800] // 7 days
+            );
 
-        // Make a request to Supabase to generate a signed URL
-        $path = $gallery->storage_path;
-        $url = $supabaseUrl . '/storage/v1/object/sign/gallery-uploads/' . basename($path);
+            if (!$signResponse->successful()) {
+                throw new \Exception('Failed to generate signed URL: ' . $signResponse->body());
+            }
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-            'expiresIn' => 604800, // 7 days
-        ]));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'apikey: ' . $supabaseKey,
-            'Authorization: Bearer ' . $supabaseKey
-        ]);
+            $data = $signResponse->json();
 
-        $response = curl_exec($ch);
-        curl_close($ch);
+            // Update the gallery with the new signed URL
+            $gallery->storage_url = $data['signedURL'];
+            $gallery->save();
 
-        $data = json_decode($response, true);
-
-        // Update the gallery with the new signed URL
-        $gallery->storage_url = $data['signedURL'];
-        $gallery->save();
-
-        return response()->json(['signedUrl' => $supabaseUrl . '/storage/v1' . $data['signedURL']]);
+            return response()->json(['signedUrl' => $this->supabaseUrl . $data['signedURL']]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to refresh signed URL: ' . $e->getMessage()], 500);
+        }
     }
 }
