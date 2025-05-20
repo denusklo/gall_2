@@ -112,7 +112,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useGalleryStore } from '../../stores/gallery';
 import { useCategoryStore } from '../../stores/category';
 

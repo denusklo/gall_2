@@ -191,53 +191,59 @@ class GalleryApiController extends Controller {
         return response()->json(['message' => 'Upload endpoint is ready, but direct upload is handled by Vercel Blob on the frontend']);
     }
 
-    // app/Http/Controllers/API/GalleryApiController.php - Add a new stats method
     public function stats() {
-        $userId = Auth::id();
-        $now = now();
-        $startOfMonth = $now->copy()->startOfMonth();
+        try {
+            $userId = Auth::id();
+            $now = now();
+            $startOfMonth = $now->copy()->startOfMonth();
 
-        // Get total images
-        $totalImages = Gallery::where('user_id', $userId)->count();
+            // Get total images
+            $totalImages = Gallery::where('user_id', $userId)->count();
 
-        // Get total storage used
-        $totalStorage = Gallery::where('user_id', $userId)->sum('size');
+            // Get total storage used
+            $totalStorage = Gallery::where('user_id', $userId)->sum('size');
 
-        // Get uploads this month
-        $recentUploads = Gallery::where('user_id', $userId)
-            ->where('created_at', '>=', $startOfMonth)
-            ->count();
-
-        // Get file type breakdown
-        $fileTypes = Gallery::where('user_id', $userId)
-            ->select('mime_type', \DB::raw('count(*) as count'))
-            ->groupBy('mime_type')
-            ->orderBy('count', 'desc')
-            ->get();
-
-        // Get upload timeline (last 6 months)
-        $timeline = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $month = $now->copy()->subMonths($i);
-            $startDate = $month->copy()->startOfMonth();
-            $endDate = $month->copy()->endOfMonth();
-
-            $count = Gallery::where('user_id', $userId)
-                ->whereBetween('created_at', [$startDate, $endDate])
+            // Get uploads this month
+            $recentUploads = Gallery::where('user_id', $userId)
+                ->where('created_at', '>=', $startOfMonth)
                 ->count();
 
-            $timeline[] = [
-                'month' => $month->format('M Y'),
-                'count' => $count
-            ];
-        }
+            // Get file type breakdown
+            $fileTypes = Gallery::where('user_id', $userId)
+                ->select('mime_type', \DB::raw('count(*) as count'))
+                ->groupBy('mime_type')
+                ->orderBy('count', 'desc')
+                ->get();
 
-        return response()->json([
-            'totalImages' => $totalImages,
-            'totalStorage' => $totalStorage,
-            'recentUploads' => $recentUploads,
-            'fileTypes' => $fileTypes,
-            'timeline' => $timeline
-        ]);
+            // Get upload timeline (last 6 months)
+            $timeline = [];
+            for ($i = 5; $i >= 0; $i--) {
+                $month = $now->copy()->subMonths($i);
+                $startDate = $month->copy()->startOfMonth();
+                $endDate = $month->copy()->endOfMonth();
+
+                $count = Gallery::where('user_id', $userId)
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->count();
+
+                $timeline[] = [
+                    'month' => $month->format('M Y'),
+                    'count' => $count
+                ];
+            }
+
+            return response()->json([
+                'totalImages' => $totalImages,
+                'totalStorage' => $totalStorage,
+                'recentUploads' => $recentUploads,
+                'fileTypes' => $fileTypes,
+                'timeline' => $timeline
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to fetch gallery statistics',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 }

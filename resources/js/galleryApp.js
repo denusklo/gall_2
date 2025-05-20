@@ -1,3 +1,4 @@
+require('./bootstrap');
 // resources/js/app.js - Update with optimized loading and auth token retrieval
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
@@ -69,10 +70,19 @@ function setupTokenRefresh() {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     }
     
-    // Set up token refresh for future page changes
+    // Track last refresh time
+    let lastRefresh = Date.now();
+    const REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes in milliseconds
+    
+    // Set up token refresh with time-based check
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
-            getApiToken();
+            // Only refresh if sufficient time has passed
+            const now = Date.now();
+            if (now - lastRefresh > REFRESH_INTERVAL) {
+                lastRefresh = now;
+                getApiToken();
+            }
         }
     });
 }

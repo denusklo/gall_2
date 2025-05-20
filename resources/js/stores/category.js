@@ -8,7 +8,7 @@ export const useCategoryStore = defineStore('category', {
     loading: false,
     error: null
   }),
-  
+
   getters: {
     categoriesWithCount() {
       return this.categories.map(category => ({
@@ -16,27 +16,35 @@ export const useCategoryStore = defineStore('category', {
         count: category.galleries_count || 0
       }));
     },
-    
+
     hasCategoriesWithImages() {
       return this.categories.some(cat => cat.galleries_count > 0);
     }
   },
-  
+
   actions: {
     async fetchCategories() {
       this.loading = true;
       try {
         const response = await axios.get('/api/v1/categories');
-        this.categories = response.data;
+        // Ensure we're working with an array
+        this.categories = Array.isArray(response.data)
+          ? response.data
+          : (response.data.data || []); // Try to get data array if response is an object
+
+        console.log('API response:', response.data);
+        console.log('Categories after processing:', this.categories);
+
         this.error = null;
       } catch (error) {
         this.error = error.response?.data?.message || 'Failed to fetch categories';
         console.error('Error fetching categories:', error);
+        this.categories = []; // Reset to empty array on error
       } finally {
         this.loading = false;
       }
     },
-    
+
     async createCategory(data) {
       this.loading = true;
       try {
@@ -53,17 +61,17 @@ export const useCategoryStore = defineStore('category', {
         this.loading = false;
       }
     },
-    
+
     async updateCategory(id, data) {
       this.loading = true;
       try {
         const response = await axios.put(`/api/v1/categories/${id}`, data);
         const index = this.categories.findIndex(category => category.id === id);
-        
+
         if (index !== -1) {
           this.categories[index] = { ...this.categories[index], ...response.data };
         }
-        
+
         this.categories.sort((a, b) => a.name.localeCompare(b.name));
         this.error = null;
         return response.data;
@@ -75,7 +83,7 @@ export const useCategoryStore = defineStore('category', {
         this.loading = false;
       }
     },
-    
+
     async deleteCategory(id) {
       this.loading = true;
       try {

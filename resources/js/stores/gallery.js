@@ -1,6 +1,7 @@
 // resources/js/stores/gallery.js
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import { put, generateClientToken } from '@vercel/blob/client';
 
 export const useGalleryStore = defineStore('gallery', {
   state: () => ({
@@ -21,11 +22,9 @@ export const useGalleryStore = defineStore('gallery', {
       timeline: []
     },
     activeCategory: null
-
   }),
 
   actions: {
-    // resources/js/stores/gallery.js - Update the fetchGalleries method
     async fetchGalleries(page = 1, filters = {}) {
       this.loading = true;
       try {
@@ -52,80 +51,47 @@ export const useGalleryStore = defineStore('gallery', {
       }
     },
 
-
-    // resources/js/stores/gallery.js - Update the uploadFile method
+    // Modified uploadFile method using Vercel Blob client
     async uploadFile(file, title, description = '', categoryId = null) {
       this.loading = true;
       this.uploadProgress = 0;
 
+      const token = await generateClientToken({
+        pathname,
+        allowedContentTypes: allowedTypes,
+        addRandomSuffix: true
+      });
+
+
       try {
-        // First get a presigned URL from our backend
-        const presignedUrlResponse = await axios.post('/api/v1/upload-blob', {
+        // First get a blob token from our backend
+        const tokenResponse = await axios.post('/api/v1/blob/generate-token', {
           filename: file.name,
           contentType: file.type,
         });
 
-        if (!presignedUrlResponse.data || !presignedUrlResponse.data.uploadUrl) {
-          throw new Error('Failed to get upload URL');
+        if (!tokenResponse.data || !tokenResponse.data.tokenPayload) {
+          throw new Error('Failed to get upload token');
         }
 
-        const { uploadUrl, url, pathname } = presignedUrlResponse.data;
-
-        // Upload directly to Vercel Blob using the presigned URL
-        const formData = new FormData();
-
-        // Add all the fields required by Vercel Blob
-        Object.entries(presignedUrlResponse.data.blob).forEach(([key, value]) => {
-          formData.append(key, value);
+        // Upload directly to Vercel Blob using the client SDK
+        const blob = await put(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/v1/blob/handle-upload',
+          clientPayload: tokenResponse.data.tokenPayload,
+          token: token,
+          onProgress: (progress) => {
+            this.uploadProgress = Math.round(progress * 100);
+          },
         });
-
-        // Add the file
-        formData.append('file', file);
-
-        // Use XMLHttpRequest to track upload progress
-        const xhr = new XMLHttpRequest();
-
-        // Create a promise for the upload
-        const uploadPromise = new Promise((resolve, reject) => {
-          xhr.open('POST', uploadUrl, true);
-
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-              this.uploadProgress = Math.round((event.loaded * 100) / event.total);
-            }
-          };
-
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(xhr.response);
-            } else {
-              reject({
-                status: xhr.status,
-                statusText: xhr.statusText
-              });
-            }
-          };
-
-          xhr.onerror = () => {
-            reject({
-              status: xhr.status,
-              statusText: xhr.statusText
-            });
-          };
-
-          xhr.send(formData);
-        });
-
-        // Wait for the upload to complete
-        await uploadPromise;
 
         // Now store the metadata in our database
         const galleryData = {
           title,
           description,
           category_id: categoryId,
-          blob_url: url,
-          blob_id: pathname.split('/').pop(), // Extract ID from pathname
+          blob_url: blob.url,
+          blob_id: blob.pathname.split('/').pop(), // Extract ID from pathname
           filename: file.name,
           mime_type: file.type,
           size: file.size,
@@ -185,7 +151,6 @@ export const useGalleryStore = defineStore('gallery', {
         console.error('Error fetching gallery stats:', error);
         // Don't set error state to avoid disrupting UI if stats fetch fails
       }
-
     },
     setActiveCategory(categoryId) {
       this.activeCategory = categoryId;

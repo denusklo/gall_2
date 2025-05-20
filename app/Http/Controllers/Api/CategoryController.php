@@ -13,9 +13,6 @@ class CategoryController extends Controller
 {
     public function index()
     {
-
-        die;
-
         $categories = Category::where('user_id', Auth::id())
             ->orderBy('name', 'asc')
             ->withCount('galleries')

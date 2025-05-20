@@ -4,9 +4,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BlobController;
 use App\Http\Controllers\Api\CategoryController;
-use App\Http\Controllers\Api\GalleryApiController;
 use App\Http\Controllers\Api\BlobUploadController;
+use App\Http\Controllers\Api\GalleryApiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -34,11 +35,20 @@ Route::prefix('v1')->group(function () {
     
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
-        Route::apiResource('galleries', GalleryApiController::class);
         Route::post('galleries/upload', [GalleryApiController::class, 'upload']);
         Route::get('galleries/stats', [GalleryApiController::class, 'stats']);
+        Route::apiResource('galleries', GalleryApiController::class);
         Route::post('/upload-blob', [BlobUploadController::class, 'getUploadUrl']);
         Route::apiResource('categories', CategoryController::class);
+
+        Route::prefix('blob')->group(function () {
+            Route::post('/generate-token', [BlobController::class, 'generateToken']);
+            Route::post('/handle-upload', [BlobController::class, 'handleUpload']);
+            Route::post('/upload-completed', [BlobController::class, 'uploadCompleted']);
+            Route::post('/upload-url', [BlobController::class, 'getUploadUrl']); // Add this new route
+        });
+        // Add this to your routes/api.php
+        Route::get('/blob/check-config', [App\Http\Controllers\Api\V1\BlobConfigCheckController::class, 'check']);
     });
 });
 

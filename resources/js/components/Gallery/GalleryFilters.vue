@@ -184,6 +184,11 @@ defineExpose({ initFilters });
   gap: 5px;
 }
 
+.sort-container label,
+.filter-by-type label {
+    margin-bottom: 0;
+}
+
 .sort-select, .type-select {
   min-width: 120px;
   cursor: pointer;
