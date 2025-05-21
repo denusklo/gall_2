@@ -18,8 +18,6 @@
     ],
     "env": {
         "APP_NAME": "Gall-2",
-        "APP_ENV": "production",
-        "APP_DEBUG": "false",
         "APP_URL": "https://gall-2.vercel.app/",
         "FIREBASE_DATABASE_URL": "https://usforus-3e70b-default-rtdb.asia-southeast1.firebasedatabase.app/",
         "CACHE_PATH": "/tmp/cache",
