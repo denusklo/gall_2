@@ -64,6 +64,7 @@
                         </p>
                     </div>
 
+                    
                     <div class="modal-footer">
                         <button type="button" @click="closeModal" class="btn btn-secondary" :disabled="isUploading">
                             Cancel
