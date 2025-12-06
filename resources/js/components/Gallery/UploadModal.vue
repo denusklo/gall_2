@@ -64,7 +64,6 @@
                         </p>
                     </div>
 
-                    
                     <div class="modal-footer">
                         <button type="button" @click="closeModal" class="btn btn-secondary" :disabled="isUploading">
                             Cancel
@@ -73,7 +72,13 @@
                             <span v-if="isUploading">
                                 Uploading... ({{ uploadProgress }}%)
                             </span>
-                            <span v-else>Upload</span>
+                            <span v-else>Upload to Supabase</span>
+                        </button>
+                        <button type="button" @click="uploadToVercel" class="btn btn-vercel" :disabled="!selectedFile || isUploading">
+                            <span v-if="isUploadingVercel">
+                                Uploading to Vercel...
+                            </span>
+                            <span v-else>Upload to Vercel</span>
                         </button>
                     </div>
                 </form>
@@ -108,8 +113,9 @@ const selectedFile = ref(null);
 const previewUrl = ref('');
 const uploadError = ref('');
 const isSuccess = ref(false);
+const isUploadingVercel = ref(false);
 
-const isUploading = computed(() => galleryStore.loading);
+const isUploading = computed(() => galleryStore.loading || isUploadingVercel.value);
 const uploadProgress = computed(() => galleryStore.uploadProgress);
 
 onMounted(() => {
@@ -217,9 +223,47 @@ const uploadFile = async () => {
   }
 };
 
+const uploadToVercel = async () => {
+  if (!selectedFile.value) {
+    uploadError.value = 'Please select a file to upload.';
+    return;
+  }
+  
+  uploadError.value = '';
+  isUploadingVercel.value = true;
+  
+  try {
+    // Use the Vercel upload method from the store
+    await galleryStore.uploadFileToVercel(
+      selectedFile.value, 
+      title.value, 
+      description.value, 
+      category.value
+    );
+    
+    // Show success message
+    isSuccess.value = true;
+    
+    // Notify parent that upload is complete
+    emit('upload-complete');
+    
+    // Reset form after a delay
+    setTimeout(() => {
+      title.value = '';
+      description.value = '';
+      category.value = '';
+      selectedFile.value = null;
+      previewUrl.value = '';
+    }, 300);
+  } catch (error) {
+    uploadError.value = error.message || 'Failed to upload to Vercel. Please try again.';
+  } finally {
+    isUploadingVercel.value = false;
+  }
+};
 
 const closeModal = () => {
-    if (isUploading.value) {
+    if (isUploading.value || isUploadingVercel.value) {
         if (!confirm('Upload in progress. Are you sure you want to cancel?')) {
             return;
         }
@@ -375,6 +419,15 @@ const closeModal = () => {
 
 .btn-secondary:hover {
     background-color: #5a6268;
+}
+
+.btn-vercel {
+    background-color: #000000;
+    color: white;
+}
+
+.btn-vercel:hover {
+    background-color: #333333;
 }
 
 .btn:disabled {

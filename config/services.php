@@ -36,4 +36,15 @@ return [
         'service_key' => env('SUPABASE_SERVICE_ROLE_KEY'),
     ],
 
+    // Add this to your config/services.php file in the return array:
+
+    'vercel' => [
+        'blob_read_write_token' => env('VERCEL_BLOB_READ_WRITE_TOKEN'),
+        'blob_store_url' => env('VERCEL_BLOB_STORE_URL', 'https://blob.vercel-storage.com'),
+    ],
+
+    // Also add these to your .env file:
+    // VERCEL_BLOB_READ_WRITE_TOKEN=your-vercel-token-here
+    // VERCEL_BLOB_STORE_URL=https://your-store-id.blob.vercel-storage.com
+
 ];

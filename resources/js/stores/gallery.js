@@ -50,7 +50,7 @@ export const useGalleryStore = defineStore('gallery', {
       }
     },
 
-    // In your Vue/React component
+    // Original Supabase upload method
     async uploadFile(file, title, description = '', categoryId = null) {
       this.loading = true;
       this.uploadProgress = 0;
@@ -90,8 +90,106 @@ export const useGalleryStore = defineStore('gallery', {
       }
     },
 
+    // Vercel Blob upload method - Manual implementation (no SDK)
+    async uploadFileToVercel(file, title, description = '', categoryId = null) {
+      this.loading = true;
+      this.uploadProgress = 0;
+
+      try {
+        // Step 1: Get client upload token from our backend
+        console.log('Step 1: Requesting client token from backend...');
+        const tokenResponse = await axios.post('/apiv/_1/vercel/generate-client-token', {
+          filename: file.name,
+          content_type: file.type,
+          size: file.size,
+          title: title,
+          description: description,
+          category_id: categoryId
+        });
+
+        const { clientToken, pathname, metadata } = tokenResponse.data;
+        console.log('Client token received. Pathname:', pathname);
+
+        // Step 2: Upload directly to Vercel Blob Storage
+        // CORRECT endpoint: https://vercel.com/api/blob (not blob.vercel-storage.com!)
+        const uploadUrl = `https://vercel.com/api/blob/${pathname}`;
+        console.log('Step 2: Uploading to Vercel Blob:', uploadUrl);
+
+        // Create a clean axios instance without any default headers for Vercel upload
+        const vercelAxios = axios.create();
+
+        // Remove all common headers (including CSRF token)
+        vercelAxios.defaults.headers.common = {};
+
+        const uploadResponse = await vercelAxios.put(uploadUrl, file, {
+          headers: {
+            'Authorization': `Bearer ${clientToken}`,
+            'Content-Type': file.type,
+          },
+          onUploadProgress: (progressEvent) => {
+            const progress = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            this.uploadProgress = progress;
+            console.log(`Upload progress: ${progress}%`);
+          }
+        });
+
+        console.log('Upload successful! Vercel response:', uploadResponse.data);
+
+        // Step 3: Notify our backend to save in the database
+        console.log('Step 3: Saving to database...');
+        const callbackResponse = await axios.post('/apiv/_1/vercel/upload-callback', {
+          blob: {
+            url: uploadResponse.data.url,
+            pathname: uploadResponse.data.pathname || pathname,
+            size: uploadResponse.data.size || file.size,
+            contentType: uploadResponse.data.contentType || file.type,
+            downloadUrl: uploadResponse.data.downloadUrl
+          },
+          metadata: metadata
+        });
+
+        console.log('Gallery saved successfully!', callbackResponse.data.gallery);
+
+        // Add the new gallery to the list
+        this.galleries.unshift(callbackResponse.data.gallery);
+        this.error = null;
+
+        return callbackResponse.data.gallery;
+      } catch (error) {
+        console.error('Error uploading to Vercel:', error);
+        console.error('Error details:', error.response?.data);
+
+        // Provide more detailed error messages
+        let errorMessage = 'Failed to upload to Vercel';
+        if (error.response?.data?.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+
+        this.error = errorMessage;
+        throw new Error(errorMessage);
+      } finally {
+        this.loading = false;
+        this.uploadProgress = 0;
+      }
+    },
+
     async deleteGallery(id) {
       try {
+        const gallery = this.galleries.find(g => g.id === id);
+        
+        // If it's a Vercel upload, delete from Vercel
+        if (gallery && gallery.storage_provider === 'vercel') {
+          await axios.delete('/apiv/_1/vercel/delete-blob', {
+            data: { url: gallery.storage_url }
+          });
+        }
+
         await axios.delete(`/apiv/_1/galleries/${id}`);
         this.galleries = this.galleries.filter(gallery => gallery.id !== id);
         this.error = null;

@@ -9,7 +9,7 @@
 
             <div class="modal-body">
                 <div class="image-container">
-                    <img :src="gallery.blob_url" :alt="gallery.title" class="full-image" />
+                    <img :src="blob_url" :alt="gallery.title" class="full-image" />
                 </div>
 
                 <div class="image-details">
@@ -28,8 +28,8 @@
                     </div>
 
                     <div class="actions">
-                        <a :href="gallery.blob_url" target="_blank" class="btn btn-primary">View Full Size</a>
-                        <a :href="gallery.blob_url" download class="btn btn-secondary">Download</a>
+                        <a :href="viewUrl" target="_blank" class="btn btn-primary">View Full Size</a>
+                        <a :href="downloadUrl" download class="btn btn-secondary">Download</a>
                         <button @click="editGallery" class="btn btn-info">Edit Details</button>
                         <button @click="deleteGallery" class="btn btn-danger">Delete</button>
                     </div>
@@ -40,7 +40,8 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue';
+import { defineProps, defineEmits, computed, ref, onMounted } from 'vue';
+import axios from 'axios';
 
 const props = defineProps({
     gallery: {
@@ -50,6 +51,68 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'edit', 'delete']);
+
+const supabaseUrl = ref('');
+
+const fetchSupabaseUrl = async () => {
+    const cachedUrl = localStorage.getItem('supabaseUrl');
+    if (cachedUrl) {
+        supabaseUrl.value = cachedUrl;
+        return;
+    }
+
+    try {
+        const response = await axios.get('/apiv/_1/config/supabase-url');
+        supabaseUrl.value = response.data.url;
+        localStorage.setItem('supabaseUrl', response.data.url);
+    } catch (error) {
+        console.error('Failed to fetch Supabase URL:', error);
+    }
+};
+
+onMounted(fetchSupabaseUrl);
+
+const blob_url = computed(() => {
+    const storedUrl = props.gallery.storage_url || '';
+
+    // If the URL starts with http or https, it's a complete URL (Vercel or full Supabase URL)
+    if (storedUrl.startsWith('http://') || storedUrl.startsWith('https://')) {
+        return storedUrl;
+    }
+
+    // If no Supabase URL is available yet, use a placeholder
+    if (!supabaseUrl.value) {
+        return 'https://placehold.co/400';
+    }
+
+    // If it's a relative path, prepend the Supabase URL
+    return `${supabaseUrl.value}/storage/v1${storedUrl.startsWith('/') ? '' : '/'}${storedUrl}`;
+});
+
+// Separate URL for viewing (removes download parameter for Vercel)
+const viewUrl = computed(() => {
+    const url = blob_url.value;
+
+    // For Vercel Blob URLs, ensure no download parameter
+    if (url.includes('vercel-storage.com')) {
+        // Remove any ?download=1 parameter
+        return url.split('?')[0];
+    }
+
+    return url;
+});
+
+// URL for downloading (adds download parameter)
+const downloadUrl = computed(() => {
+    const url = blob_url.value;
+
+    // For Vercel Blob URLs, add download parameter
+    if (url.includes('vercel-storage.com')) {
+        return `${url.split('?')[0]}?download=1`;
+    }
+
+    return url;
+});
 
 const formatDate = (dateString) => {
     const date = new Date(dateString);

@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\GalleryController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\GalleryStorageController;
+use App\Http\Controllers\Api\VercelBlobController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,9 +34,16 @@ Route::prefix('_1')->group(function () {
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
 
+        // Supabase storage routes
         Route::post('storage/generate-upload-url', [GalleryStorageController::class, 'generateUploadUrl']);
         Route::get('storage/check-bucket', [GalleryStorageController::class, 'checkBucket']);
         Route::delete('storage/delete-file', [GalleryStorageController::class, 'deleteFile']);
+
+        // Vercel Blob storage routes
+        Route::post('vercel/generate-client-token', [VercelBlobController::class, 'generateClientToken']);
+        Route::post('vercel/upload-callback', [VercelBlobController::class, 'handleUploadCallback']);
+        Route::delete('vercel/delete-blob', [VercelBlobController::class, 'deleteBlob']);
+        Route::get('vercel/list-blobs', [VercelBlobController::class, 'listBlobs']);
 
         // Gallery endpoints
         Route::get('galleries', [GalleryController::class, 'index']);

@@ -344,6 +344,13 @@ class GalleryController extends Controller {
                 ['expiresIn' => 604800] // 7 days
             );
 
+            Log::info('Generating signed URL for file', [
+                'gallery_id' => $galleryId,
+                'filename' => $gallery->filename,
+                'storage_path' => $path,
+                'status_code' => $signResponse->status(),
+                'response_body' => $signResponse->body(),
+            ]);
             if (!$signResponse->successful()) {
                 throw new \Exception('Failed to generate signed URL: ' . $signResponse->body());
             }

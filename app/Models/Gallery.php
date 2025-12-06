@@ -6,8 +6,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Gallery extends Model
-{
+class Gallery extends Model {
+
+    const STORAGE_SUPABASE = 'supabase';
+    const STORAGE_VERCEL = 'vercel';
+
     use HasFactory, SoftDeletes;
 
     /**
@@ -19,15 +22,15 @@ class Gallery extends Model
         'user_id',
         'title',
         'description',
-        'storage_path',
-        'storage_bucket', 
-        'storage_url',
         'category_id',
+        'storage_path',
+        'storage_bucket',
+        'storage_url',
+        'storage_provider', // Add this line
         'filename',
         'mime_type',
-        'size'
+        'size',
     ];
-
 
     /**
      * The attributes that should be cast.
@@ -44,16 +47,14 @@ class Gallery extends Model
     /**
      * Get the category that owns the gallery.
      */
-    public function category()
-    {
+    public function category() {
         return $this->belongsTo(Category::class);
     }
 
     /**
      * Get the user that owns the gallery.
      */
-    public function user()
-    {
+    public function user() {
         return $this->belongsTo(User::class);
     }
 
@@ -62,17 +63,16 @@ class Gallery extends Model
      *
      * @return string
      */
-    public function getFormattedSizeAttribute()
-    {
+    public function getFormattedSizeAttribute() {
         $bytes = $this->size;
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        
+
         $bytes = max($bytes, 0);
         $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow = min($pow, count($units) - 1);
-        
+
         $bytes /= pow(1024, $pow);
-        
+
         return round($bytes, 2) . ' ' . $units[$pow];
     }
 
@@ -81,8 +81,7 @@ class Gallery extends Model
      *
      * @return string
      */
-    public function getFileTypeAttribute()
-    {
+    public function getFileTypeAttribute() {
         $parts = explode('/', $this->mime_type);
         return $parts[0] ?? 'unknown';
     }
@@ -92,8 +91,7 @@ class Gallery extends Model
      *
      * @return string
      */
-    public function getFileSubtypeAttribute()
-    {
+    public function getFileSubtypeAttribute() {
         $parts = explode('/', $this->mime_type);
         return $parts[1] ?? 'unknown';
     }
@@ -103,8 +101,7 @@ class Gallery extends Model
      *
      * @return bool
      */
-    public function getIsImageAttribute()
-    {
+    public function getIsImageAttribute() {
         return $this->file_type === 'image';
     }
 
@@ -113,8 +110,7 @@ class Gallery extends Model
      *
      * @return bool
      */
-    public function getIsVideoAttribute()
-    {
+    public function getIsVideoAttribute() {
         return $this->file_type === 'video';
     }
 
@@ -123,8 +119,7 @@ class Gallery extends Model
      *
      * @return bool
      */
-    public function getIsAudioAttribute()
-    {
+    public function getIsAudioAttribute() {
         return $this->file_type === 'audio';
     }
 
@@ -133,8 +128,15 @@ class Gallery extends Model
      *
      * @return bool
      */
-    public function getIsDocumentAttribute()
-    {
+    public function getIsDocumentAttribute() {
         return in_array($this->file_type, ['application', 'text']);
+    }
+
+    public function isVercelStorage() {
+        return $this->storage_provider === self::STORAGE_VERCEL;
+    }
+
+    public function isSupabaseStorage() {
+        return $this->storage_provider === self::STORAGE_SUPABASE;
     }
 }

@@ -50,3 +50,7 @@ Thumbs.db
 # PHP CS Fixer
 .php-cs-fixer.cache
 .php_cs.cache
+
+# Markdown files
+*.md
+!README.md

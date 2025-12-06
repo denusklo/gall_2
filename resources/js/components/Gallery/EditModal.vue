@@ -32,7 +32,7 @@
                     </div>
 
                     <div class="image-preview">
-                        <img :src="gallery.blob_url" :alt="gallery.title">
+                        <img :src="blob_url" :alt="gallery.title">
                     </div>
 
                     <div class="modal-footer">
@@ -51,6 +51,7 @@
 
 <script setup>
 import { ref, defineProps, defineEmits, onMounted, computed } from 'vue';
+import axios from 'axios';
 import { useGalleryStore } from '../../stores/gallery';
 import { useCategoryStore } from '../../stores/category';
 
@@ -66,6 +67,7 @@ const galleryStore = useGalleryStore();
 const loading = ref(false);
 const categoryStore = useCategoryStore();
 const categories = computed(() => categoryStore.categories);
+const supabaseUrl = ref('');
 
 const formData = ref({
     title: '',
@@ -73,10 +75,45 @@ const formData = ref({
     category_id: ''
 });
 
+const fetchSupabaseUrl = async () => {
+    const cachedUrl = localStorage.getItem('supabaseUrl');
+    if (cachedUrl) {
+        supabaseUrl.value = cachedUrl;
+        return;
+    }
+
+    try {
+        const response = await axios.get('/apiv/_1/config/supabase-url');
+        supabaseUrl.value = response.data.url;
+        localStorage.setItem('supabaseUrl', response.data.url);
+    } catch (error) {
+        console.error('Failed to fetch Supabase URL:', error);
+    }
+};
+
+const blob_url = computed(() => {
+    const storedUrl = props.gallery.storage_url || '';
+
+    // If the URL starts with http or https, it's a complete URL (Vercel or full Supabase URL)
+    if (storedUrl.startsWith('http://') || storedUrl.startsWith('https://')) {
+        return storedUrl;
+    }
+
+    // If no Supabase URL is available yet, use a placeholder
+    if (!supabaseUrl.value) {
+        return 'https://placehold.co/400';
+    }
+
+    // If it's a relative path, prepend the Supabase URL
+    return `${supabaseUrl.value}/storage/v1${storedUrl.startsWith('/') ? '' : '/'}${storedUrl}`;
+});
+
 onMounted(() => {
     formData.value.title = props.gallery.title;
     formData.value.description = props.gallery.description || '';
     formData.value.category_id = props.gallery.category_id || '';
+
+    fetchSupabaseUrl();
 
     if (categoryStore.categories.length === 0) {
         categoryStore.fetchCategories();
