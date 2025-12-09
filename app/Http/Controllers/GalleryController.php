@@ -17,6 +17,16 @@ class GalleryController extends Controller
     }
 
     /**
+     * Display the albums (galleries) page.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function albums()
+    {
+        return view('galleries.albums');
+    }
+
+    /**
      * Show the form for creating a new resource.
      *
      * @return \Illuminate\Http\Response
@@ -45,7 +55,7 @@ class GalleryController extends Controller
      */
     public function show($id)
     {
-        //
+        return view('galleries.show', ['galleryId' => $id]);
     }
 
     /**

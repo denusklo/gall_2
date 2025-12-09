@@ -98,11 +98,11 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useGalleryStore } from '../../stores/gallery';
+import { useImageStore } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
 
 const emit = defineEmits(['close', 'upload-complete']);
-const galleryStore = useGalleryStore();
+const imageStore = useImageStore();
 const categoryStore = useCategoryStore();
 const category = ref('');
 const categories = computed(() => categoryStore.categories);
@@ -115,8 +115,8 @@ const uploadError = ref('');
 const isSuccess = ref(false);
 const isUploadingVercel = ref(false);
 
-const isUploading = computed(() => galleryStore.loading || isUploadingVercel.value);
-const uploadProgress = computed(() => galleryStore.uploadProgress);
+const isUploading = computed(() => imageStore.loading || isUploadingVercel.value);
+const uploadProgress = computed(() => imageStore.uploadProgress);
 
 onMounted(() => {
   if (categoryStore.categories.length === 0) {
@@ -185,31 +185,24 @@ const uploadFile = async () => {
     uploadError.value = 'Please select a file to upload.';
     return;
   }
-  
+
   uploadError.value = '';
-  
+
   try {
-    // Prepare data for the gallery including the category if selected
-    const galleryData = {
-      file: selectedFile.value,
-      title: title.value,
-      description: description.value,
-      category_id: category.value || null
-    };
-    
-    await galleryStore.uploadFile(
-      selectedFile.value, 
-      title.value, 
-      description.value, 
+    // Upload using Image store
+    await imageStore.uploadFile(
+      selectedFile.value,
+      title.value,
+      description.value,
       category.value
     );
-    
+
     // Show success message
     isSuccess.value = true;
-    
+
     // Notify parent that upload is complete
     emit('upload-complete');
-    
+
     // Reset form after a delay (if not closing)
     setTimeout(() => {
       title.value = '';
@@ -228,25 +221,25 @@ const uploadToVercel = async () => {
     uploadError.value = 'Please select a file to upload.';
     return;
   }
-  
+
   uploadError.value = '';
   isUploadingVercel.value = true;
-  
+
   try {
-    // Use the Vercel upload method from the store
-    await galleryStore.uploadFileToVercel(
-      selectedFile.value, 
-      title.value, 
-      description.value, 
+    // Use the Vercel upload method from the image store
+    await imageStore.uploadFileToVercel(
+      selectedFile.value,
+      title.value,
+      description.value,
       category.value
     );
-    
+
     // Show success message
     isSuccess.value = true;
-    
+
     // Notify parent that upload is complete
     emit('upload-complete');
-    
+
     // Reset form after a delay
     setTimeout(() => {
       title.value = '';

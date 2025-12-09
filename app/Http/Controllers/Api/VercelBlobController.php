@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Gallery;
+use App\Models\Image;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
@@ -67,8 +67,8 @@ class VercelBlobController extends Controller
 
             $blob = $response->json();
 
-            // Create gallery entry
-            $gallery = Gallery::create([
+            // Create image entry
+            $image = Image::create([
                 'title' => $request->title,
                 'description' => $request->description,
                 'category_id' => $request->category_id,
@@ -79,14 +79,14 @@ class VercelBlobController extends Controller
                 'mime_type' => $file->getMimeType(),
                 'size' => $file->getSize(),
                 'user_id' => auth()->id(),
-                'storage_provider' => Gallery::STORAGE_VERCEL,
+                'storage_provider' => Image::STORAGE_VERCEL,
             ]);
 
-            $gallery->load(['category', 'user']);
+            $image->load(['category', 'user']);
 
             return response()->json([
                 'success' => true,
-                'gallery' => $gallery,
+                'image' => $image,
             ], 201);
         } catch (\Exception $e) {
             Log::error('Error uploading to Vercel: ' . $e->getMessage(), [
@@ -221,8 +221,8 @@ class VercelBlobController extends Controller
             $contentType = $blob['contentType'] ?? 'application/octet-stream';
             $size = $blob['size'] ?? 0;
 
-            // Create gallery entry
-            $gallery = Gallery::create([
+            // Create image entry
+            $image = Image::create([
                 'title' => $metadata['title'],
                 'description' => $metadata['description'] ?? null,
                 'category_id' => !empty($metadata['category_id']) ? $metadata['category_id'] : null,
@@ -233,21 +233,21 @@ class VercelBlobController extends Controller
                 'mime_type' => $contentType,
                 'size' => $size,
                 'user_id' => $metadata['user_id'] ?? auth()->id(),
-                'storage_provider' => Gallery::STORAGE_VERCEL,
+                'storage_provider' => Image::STORAGE_VERCEL,
             ]);
 
-            // Load the gallery with relationships
-            $gallery->load(['category', 'user']);
+            // Load the image with relationships
+            $image->load(['category', 'user']);
 
             Log::info('Vercel blob uploaded successfully', [
-                'gallery_id' => $gallery->id,
+                'image_id' => $image->id,
                 'url' => $blob['url'],
                 'pathname' => $blob['pathname'],
             ]);
 
             return response()->json([
                 'success' => true,
-                'gallery' => $gallery,
+                'image' => $image,
             ], 201);
         } catch (\Exception $e) {
             Log::error('Error handling Vercel upload callback: ' . $e->getMessage(), [

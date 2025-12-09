@@ -27,6 +27,9 @@
                     <small>{{ formatFileSize(gallery.size) }} | {{ formatDate(gallery.created_at) }}</small>
                 </p>
                 <div class="gallery-actions" @click.stop>
+                    <button @click.stop="$emit('add-to-gallery', gallery)" class="btn btn-sm btn-outline-success">
+                        <i class="fas fa-folder-plus"></i> Add to Gallery
+                    </button>
                     <button @click.stop="$emit('edit', gallery)" class="btn btn-sm btn-outline-primary">
                         Edit
                     </button>
@@ -62,7 +65,7 @@ const props = defineProps({
     }
 });
 
-const emit = defineEmits(['edit', 'delete']);
+const emit = defineEmits(['edit', 'delete', 'add-to-gallery']);
 const showDetail = ref(false);
 const refreshedUrl = ref(null);
 const urlError = ref(false);
@@ -241,6 +244,17 @@ const closeDetail = () => {
     font-size: 0.8rem;
     border-radius: 4px;
     cursor: pointer;
+}
+
+.btn-outline-success {
+    color: #28a745;
+    border: 1px solid #28a745;
+    background-color: transparent;
+}
+
+.btn-outline-success:hover {
+    background-color: #28a745;
+    color: white;
 }
 
 .btn-outline-primary {

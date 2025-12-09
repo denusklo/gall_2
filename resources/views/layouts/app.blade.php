@@ -63,15 +63,15 @@
                                 <a class="nav-link" href="{{ route('request.index') }}">{{ __('My Requests') }}</a>
                             </li>
 
-                            <!-- Galleries Link -->
+                            <!-- Images Link - Individual images -->
                             <li class="nav-item">
-                                <a class="nav-link" href="{{ route('galleries.index') }}">{{ __('Galleries') }}</a>
+                                <a class="nav-link" href="{{ route('images.index') }}">{{ __('Images') }}</a>
                             </li>
 
-                            <!-- Image Gallery Link -->
+                            <!-- Galleries Link - Albums/Collections (coming soon) -->
                             <li class="nav-item">
-                                <a class="nav-link" href="#"> <!-- Add your route -->
-                                    {{ __('Images') }}
+                                <a class="nav-link" href="{{ route('galleries.index') }}" title="Albums feature - uses same view for now">
+                                    {{ __('Galleries') }}
                                 </a>
                             </li>
 

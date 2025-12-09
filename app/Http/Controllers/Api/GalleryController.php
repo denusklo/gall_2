@@ -4,25 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Gallery;
-use App\Models\Category;
+use App\Models\Image;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 
 class GalleryController extends Controller {
-    protected $supabaseUrl;
-    protected $supabaseKey;
-    protected $supabaseServiceKey;
-
-    public function __construct() {
-        $this->supabaseUrl = config('services.supabase.url');
-        $this->supabaseKey = config('services.supabase.key');
-        $this->supabaseServiceKey = config('services.supabase.service_key');
-    }
 
     /**
-     * Display a listing of galleries.
+     * Display a listing of galleries (albums).
      *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
@@ -34,19 +24,8 @@ class GalleryController extends Controller {
         if ($request->has('search') && !empty($request->search)) {
             $query->where(function ($q) use ($request) {
                 $q->where('title', 'like', '%' . $request->search . '%')
-                    ->orWhere('description', 'like', '%' . $request->search . '%')
-                    ->orWhere('filename', 'like', '%' . $request->search . '%');
+                    ->orWhere('description', 'like', '%' . $request->search . '%');
             });
-        }
-
-        // Apply file type filter
-        if ($request->has('file_type') && !empty($request->file_type)) {
-            $query->where('mime_type', 'like', $request->file_type . '%');
-        }
-
-        // Apply category filter
-        if ($request->has('category_id') && !empty($request->category_id)) {
-            $query->where('category_id', $request->category_id);
         }
 
         // Apply sorting
@@ -61,12 +40,6 @@ class GalleryController extends Controller {
             case 'name_desc':
                 $query->orderBy('title', 'desc');
                 break;
-            case 'size_asc':
-                $query->orderBy('size', 'asc');
-                break;
-            case 'size_desc':
-                $query->orderBy('size', 'desc');
-                break;
             case 'newest':
             default:
                 $query->orderBy('created_at', 'desc');
@@ -75,7 +48,9 @@ class GalleryController extends Controller {
 
         // Paginate the results
         $perPage = $request->get('per_page', 12);
-        $galleries = $query->with('category')->paginate($perPage);
+        $galleries = $query->with(['coverImage', 'user'])
+            ->withCount('images')
+            ->paginate($perPage);
 
         return response()->json($galleries);
     }
@@ -90,31 +65,35 @@ class GalleryController extends Controller {
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
-            'storage_path' => 'required|string',
-            'storage_bucket' => 'required|string',
-            'storage_url' => 'required|string',
-            'filename' => 'required|string',
-            'mime_type' => 'required|string',
-            'size' => 'required|integer',
+            'cover_image_id' => 'nullable|exists:images,id',
         ]);
 
         try {
+            DB::beginTransaction();
+
             $gallery = Gallery::create([
                 'title' => $request->title,
                 'description' => $request->description,
-                'category_id' => $request->category_id,
-                'storage_path' => $request->storage_path,
-                'storage_bucket' => $request->storage_bucket,
-                'storage_url' => $request->storage_url,
-                'filename' => $request->filename,
-                'mime_type' => $request->mime_type,
-                'size' => $request->size,
-                'user_id' => auth()->id(), // Assuming user is authenticated
+                'cover_image_id' => $request->cover_image_id,
+                'user_id' => auth()->id(),
             ]);
+
+            // If a cover image was selected, add it to the gallery
+            if ($request->cover_image_id) {
+                $gallery->images()->attach($request->cover_image_id, [
+                    'order' => 0,
+                ]);
+            }
+
+            DB::commit();
+
+            $gallery->load(['coverImage', 'user']);
+            $gallery->loadCount('images');
 
             return response()->json($gallery, 201);
         } catch (\Exception $e) {
+            DB::rollBack();
+
             Log::error('Error storing gallery: ' . $e->getMessage(), [
                 'exception' => $e,
                 'request' => $request->all(),
@@ -124,13 +103,16 @@ class GalleryController extends Controller {
     }
 
     /**
-     * Display the specified gallery.
+     * Display the specified gallery with its images.
      *
      * @param int $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function show($id) {
-        $gallery = Gallery::with('category')->findOrFail($id);
+        $gallery = Gallery::with(['coverImage', 'user', 'images' => function ($query) {
+            $query->with('category');
+        }])->findOrFail($id);
+
         return response()->json($gallery);
     }
 
@@ -147,15 +129,17 @@ class GalleryController extends Controller {
         $request->validate([
             'title' => 'string|max:255',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
+            'cover_image_id' => 'nullable|exists:images,id',
         ]);
 
         try {
             $gallery->update($request->only([
                 'title',
                 'description',
-                'category_id'
+                'cover_image_id'
             ]));
+
+            $gallery->load(['coverImage', 'user']);
 
             return response()->json($gallery);
         } catch (\Exception $e) {
@@ -178,15 +162,7 @@ class GalleryController extends Controller {
         $gallery = Gallery::findOrFail($id);
 
         try {
-            // Delete file from Supabase Storage
-            if ($gallery->storage_path && $gallery->storage_bucket) {
-                Http::withHeaders([
-                    'apikey' => $this->supabaseKey,
-                    'Authorization' => 'Bearer ' . $this->supabaseKey,
-                ])->delete("{$this->supabaseUrl}/storage/v1/object/{$gallery->storage_bucket}/{$gallery->storage_path}");
-            }
-
-            // Delete gallery record
+            // Delete gallery record (images will be detached due to cascade)
             $gallery->delete();
 
             return response()->json(['message' => 'Gallery deleted successfully']);
@@ -200,170 +176,146 @@ class GalleryController extends Controller {
     }
 
     /**
-     * Get statistics about galleries.
+     * Add an image to a gallery.
      *
+     * @param Request $request
+     * @param int $galleryId
+     * @param int $imageId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function stats() {
+    public function addImage(Request $request, $galleryId, $imageId) {
+        $gallery = Gallery::findOrFail($galleryId);
+        $image = Image::findOrFail($imageId);
+
         try {
-            // Get total images count
-            $totalImages = Gallery::count();
+            // Get the current max order for this gallery
+            $maxOrder = $gallery->images()->max('order') ?? -1;
 
-            // Get total storage used in bytes
-            $totalStorage = Gallery::sum('size');
-
-            // Get recent uploads (last 30 days)
-            $recentUploads = Gallery::where('created_at', '>=', now()->subDays(30))->count();
-
-            // Get file types distribution
-            $fileTypes = Gallery::select(
-                DB::raw("SUBSTRING_INDEX(mime_type, '/', 1) as type"),
-                DB::raw('COUNT(*) as count')
-            )
-                ->groupBy('type')
-                ->get()
-                ->map(function ($item) {
-                    return [
-                        'type' => $item->type,
-                        'count' => $item->count,
-                    ];
-                });
-
-            // Get timeline of uploads (last 12 months)
-            $timeline = [];
-            for ($i = 11; $i >= 0; $i--) {
-                $month = now()->subMonths($i);
-                $count = Gallery::whereYear('created_at', $month->year)
-                    ->whereMonth('created_at', $month->month)
-                    ->count();
-
-                $timeline[] = [
-                    'month' => $month->format('M Y'),
-                    'count' => $count,
-                ];
-            }
+            // Attach the image with the next order number
+            $gallery->images()->attach($imageId, [
+                'order' => $maxOrder + 1,
+            ]);
 
             return response()->json([
-                'totalImages' => $totalImages,
-                'totalStorage' => $totalStorage,
-                'recentUploads' => $recentUploads,
-                'fileTypes' => $fileTypes,
-                'timeline' => $timeline,
+                'message' => 'Image added to gallery successfully',
+                'gallery' => $gallery->load(['images', 'coverImage']),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching gallery stats: ' . $e->getMessage(), [
+            // Check if it's a duplicate entry error
+            if (strpos($e->getMessage(), 'Duplicate entry') !== false ||
+                strpos($e->getMessage(), 'unique_gallery_image') !== false) {
+                return response()->json(['error' => 'Image is already in this gallery'], 409);
+            }
+
+            Log::error('Error adding image to gallery: ' . $e->getMessage(), [
                 'exception' => $e,
+                'gallery_id' => $galleryId,
+                'image_id' => $imageId,
             ]);
-            return response()->json(['error' => 'Failed to fetch gallery stats: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Failed to add image to gallery: ' . $e->getMessage()], 500);
         }
     }
 
-    public function upload(Request $request) {
-        // Validate the request
-        $request->validate([
-            'file' => 'required|file',
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
-        ]);
-
-        try {
-            // Get the file from the request
-            $file = $request->file('file');
-            $filename = time() . '_' . $file->getClientOriginalName();
-            
-            // Get file contents
-            $fileContents = file_get_contents($file->getRealPath());
-
-            // First, upload the file using Laravel's HTTP Client
-            $uploadResponse = Http::withHeaders([
-                'Content-Type' => $file->getMimeType(),
-                'apikey' => $this->supabaseServiceKey,
-                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
-            ])->withBody(
-                $fileContents, $file->getMimeType()
-            )->post(
-                $this->supabaseUrl . '/storage/v1/object/gallery-uploads/' . $filename
-            );
-
-            if (!$uploadResponse->successful()) {
-                throw new \Exception('Failed to upload to Supabase: ' . $uploadResponse->body());
-            }
-
-            // Now generate a signed URL for the file
-            $signResponse = Http::withHeaders([
-                'Content-Type' => 'application/json',
-                'apikey' => $this->supabaseServiceKey,
-                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
-            ])->post(
-                $this->supabaseUrl . '/storage/v1/object/sign/gallery-uploads/' . $filename,
-                ['expiresIn' => 604800] // 7 days
-            );
-
-            if (!$signResponse->successful()) {
-                throw new \Exception('Failed to generate signed URL: ' . $signResponse->body());
-            }
-
-            $signData = $signResponse->json();
-            $signedUrl = $signData['signedURL'];
-
-            // Save to database
-            $gallery = new Gallery();
-            $gallery->user_id = auth()->id();
-            $gallery->title = $request->title;
-            $gallery->description = $request->description;
-            $gallery->category_id = $request->category_id;
-            $gallery->storage_path = $filename;
-            $gallery->storage_bucket = 'gallery-uploads';
-            $gallery->storage_url = $signedUrl; // Use the signed URL
-            $gallery->filename = $file->getClientOriginalName();
-            $gallery->mime_type = $file->getMimeType();
-            $gallery->size = $file->getSize();
-            $gallery->save();
-
-            return response()->json($gallery, 201);
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 500);
-        }
-    }
-
-    // Create a route to generate a signed URL
-    public function refreshSignedUrl(Request $request, $galleryId) {
+    /**
+     * Remove an image from a gallery.
+     *
+     * @param int $galleryId
+     * @param int $imageId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function removeImage($galleryId, $imageId) {
         $gallery = Gallery::findOrFail($galleryId);
 
         try {
-            // Make a request to Supabase to generate a signed URL
-            $path = $gallery->storage_path;
-            
-            $signResponse = Http::withHeaders([
-                'Content-Type' => 'application/json',
-                'apikey' => $this->supabaseServiceKey,
-                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
-            ])->post(
-                $this->supabaseUrl . '/storage/v1/object/sign/gallery-uploads/' . $path,
-                ['expiresIn' => 604800] // 7 days
-            );
+            $gallery->images()->detach($imageId);
 
-            Log::info('Generating signed URL for file', [
-                'gallery_id' => $galleryId,
-                'filename' => $gallery->filename,
-                'storage_path' => $path,
-                'status_code' => $signResponse->status(),
-                'response_body' => $signResponse->body(),
+            return response()->json([
+                'message' => 'Image removed from gallery successfully',
+                'gallery' => $gallery->load(['images', 'coverImage']),
             ]);
-            if (!$signResponse->successful()) {
-                throw new \Exception('Failed to generate signed URL: ' . $signResponse->body());
+        } catch (\Exception $e) {
+            Log::error('Error removing image from gallery: ' . $e->getMessage(), [
+                'exception' => $e,
+                'gallery_id' => $galleryId,
+                'image_id' => $imageId,
+            ]);
+            return response()->json(['error' => 'Failed to remove image from gallery: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Set the cover image for a gallery.
+     *
+     * @param Request $request
+     * @param int $galleryId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function setCoverImage(Request $request, $galleryId) {
+        $gallery = Gallery::findOrFail($galleryId);
+
+        $request->validate([
+            'image_id' => 'required|exists:images,id',
+        ]);
+
+        try {
+            $gallery->update([
+                'cover_image_id' => $request->image_id,
+            ]);
+
+            return response()->json([
+                'message' => 'Cover image set successfully',
+                'gallery' => $gallery->load(['coverImage', 'images']),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error setting cover image: ' . $e->getMessage(), [
+                'exception' => $e,
+                'gallery_id' => $galleryId,
+                'image_id' => $request->image_id,
+            ]);
+            return response()->json(['error' => 'Failed to set cover image: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Update the order of images in a gallery.
+     *
+     * @param Request $request
+     * @param int $galleryId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateImageOrder(Request $request, $galleryId) {
+        $gallery = Gallery::findOrFail($galleryId);
+
+        $request->validate([
+            'image_ids' => 'required|array',
+            'image_ids.*' => 'exists:images,id',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            // Update the order for each image
+            foreach ($request->image_ids as $index => $imageId) {
+                $gallery->images()->updateExistingPivot($imageId, [
+                    'order' => $index,
+                ]);
             }
 
-            $data = $signResponse->json();
+            DB::commit();
 
-            // Update the gallery with the new signed URL
-            $gallery->storage_url = $data['signedURL'];
-            $gallery->save();
-
-            return response()->json(['signedUrl' => $this->supabaseUrl . $data['signedURL']]);
+            return response()->json([
+                'message' => 'Image order updated successfully',
+                'gallery' => $gallery->load(['images', 'coverImage']),
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to refresh signed URL: ' . $e->getMessage()], 500);
+            DB::rollBack();
+
+            Log::error('Error updating image order: ' . $e->getMessage(), [
+                'exception' => $e,
+                'gallery_id' => $galleryId,
+                'image_ids' => $request->image_ids,
+            ]);
+            return response()->json(['error' => 'Failed to update image order: ' . $e->getMessage()], 500);
         }
     }
 }

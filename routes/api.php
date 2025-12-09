@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ImageController;
 use App\Http\Controllers\Api\GalleryController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\GalleryStorageController;
@@ -45,15 +46,30 @@ Route::prefix('_1')->group(function () {
         Route::delete('vercel/delete-blob', [VercelBlobController::class, 'deleteBlob']);
         Route::get('vercel/list-blobs', [VercelBlobController::class, 'listBlobs']);
 
-        // Gallery endpoints
-        Route::get('galleries', [GalleryController::class, 'index']);
-        Route::post('galleries', [GalleryController::class, 'store']);
-        Route::get('galleries/stats', [GalleryController::class, 'stats']);
-        Route::get('galleries/{id}', [GalleryController::class, 'show']);
-        Route::put('galleries/{id}', [GalleryController::class, 'update']);
-        Route::delete('galleries/{id}', [GalleryController::class, 'destroy']);
-        Route::post('galleries/upload', [GalleryController::class, 'upload']);
-        Route::get('galleries/{id}/signed-url', [GalleryController::class, 'refreshSignedUrl']);
+        // Image endpoints (formerly galleries - individual images)
+        Route::prefix('images')->group(function() {
+            Route::get('/', [ImageController::class, 'index']);
+            Route::post('/', [ImageController::class, 'store']);
+            Route::get('/stats', [ImageController::class, 'stats']);
+            Route::get('/{id}', [ImageController::class, 'show']);
+            Route::put('/{id}', [ImageController::class, 'update']);
+            Route::delete('/{id}', [ImageController::class, 'destroy']);
+            Route::post('/upload', [ImageController::class, 'upload']);
+            Route::get('/{id}/signed-url', [ImageController::class, 'refreshSignedUrl']);
+        });
+
+        // Gallery endpoints (new - for albums/collections)
+        Route::prefix('galleries')->group(function() {
+            Route::get('/', [GalleryController::class, 'index']);
+            Route::post('/', [GalleryController::class, 'store']);
+            Route::get('/{id}', [GalleryController::class, 'show']);
+            Route::put('/{id}', [GalleryController::class, 'update']);
+            Route::delete('/{id}', [GalleryController::class, 'destroy']);
+            Route::post('/{galleryId}/images/{imageId}', [GalleryController::class, 'addImage']);
+            Route::delete('/{galleryId}/images/{imageId}', [GalleryController::class, 'removeImage']);
+            Route::put('/{galleryId}/cover', [GalleryController::class, 'setCoverImage']);
+            Route::put('/{galleryId}/images/reorder', [GalleryController::class, 'updateImageOrder']);
+        });
 
         Route::apiResource('categories', CategoryController::class);
     });
