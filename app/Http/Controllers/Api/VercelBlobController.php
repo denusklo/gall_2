@@ -25,7 +25,8 @@ class VercelBlobController extends Controller
             'file' => 'required|file|max:51200|mimes:jpeg,png,gif,webp', // 50MB max
             'title' => 'required|string',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|integer',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'exists:categories,id',
         ]);
 
         try {
@@ -71,7 +72,6 @@ class VercelBlobController extends Controller
             $image = Image::create([
                 'title' => $request->title,
                 'description' => $request->description,
-                'category_id' => $request->category_id,
                 'storage_path' => $blob['pathname'] ?? $pathname,
                 'storage_bucket' => 'vercel-blob',
                 'storage_url' => $blob['url'],
@@ -82,7 +82,12 @@ class VercelBlobController extends Controller
                 'storage_provider' => Image::STORAGE_VERCEL,
             ]);
 
-            $image->load(['category', 'user']);
+            // Attach categories if provided
+            if ($request->has('category_ids') && is_array($request->category_ids)) {
+                $image->categories()->attach($request->category_ids);
+            }
+
+            $image->load(['categories', 'user']);
 
             return response()->json([
                 'success' => true,
@@ -116,7 +121,8 @@ class VercelBlobController extends Controller
             'size' => 'required|integer|max:52428800', // 50MB max
             'title' => 'nullable|string',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|integer',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'exists:categories,id',
         ]);
 
         try {
@@ -137,7 +143,7 @@ class VercelBlobController extends Controller
             $metadata = [
                 'title' => $request->title,
                 'description' => $request->description,
-                'category_id' => $request->category_id,
+                'category_ids' => $request->category_ids ?? [],
                 'user_id' => auth()->id(),
             ];
 
@@ -225,7 +231,6 @@ class VercelBlobController extends Controller
             $image = Image::create([
                 'title' => $metadata['title'],
                 'description' => $metadata['description'] ?? null,
-                'category_id' => !empty($metadata['category_id']) ? $metadata['category_id'] : null,
                 'storage_path' => $blob['pathname'],
                 'storage_bucket' => 'vercel-blob',
                 'storage_url' => $blob['url'],
@@ -236,8 +241,13 @@ class VercelBlobController extends Controller
                 'storage_provider' => Image::STORAGE_VERCEL,
             ]);
 
+            // Attach categories if provided
+            if (!empty($metadata['category_ids']) && is_array($metadata['category_ids'])) {
+                $image->categories()->attach($metadata['category_ids']);
+            }
+
             // Load the image with relationships
-            $image->load(['category', 'user']);
+            $image->load(['categories', 'user']);
 
             Log::info('Vercel blob uploaded successfully', [
                 'image_id' => $image->id,

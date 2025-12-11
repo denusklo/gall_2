@@ -20,14 +20,21 @@
                 <p v-else-if="gallery.description" class="description">
                     {{ gallery.description.substring(0, 50) }}...
                 </p>
-                <p v-if="gallery.category" class="gallery-category">
-                    <span class="category-badge">{{ gallery.category.name }}</span>
+                <p v-if="gallery.categories && gallery.categories.length > 0" class="gallery-category">
+                    <span v-for="category in gallery.categories" :key="category.id" class="category-badge">
+                        {{ category.name }}
+                    </span>
                 </p>
                 <p class="gallery-meta">
                     <small>{{ formatFileSize(gallery.size) }} | {{ formatDate(gallery.created_at) }}</small>
                 </p>
                 <div class="gallery-actions" @click.stop>
-                    <button @click.stop="$emit('add-to-gallery', gallery)" class="btn btn-sm btn-outline-success">
+                    <button
+                        @click.stop="$emit('add-to-gallery', gallery)"
+                        class="btn btn-sm btn-outline-success"
+                        :disabled="isInAllGalleries"
+                        :title="isInAllGalleries ? 'Image is already in all galleries' : 'Add to Gallery'"
+                    >
                         <i class="fas fa-folder-plus"></i> Add to Gallery
                     </button>
                     <button @click.stop="$emit('edit', gallery)" class="btn btn-sm btn-outline-primary">
@@ -56,6 +63,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { defineProps, defineEmits } from 'vue';
 import GalleryDetail from './GalleryDetail.vue';
+import { useGalleryStore } from '../../stores/gallery';
 import axios from 'axios'; // Make sure axios is imported
 
 const props = defineProps({
@@ -66,6 +74,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['edit', 'delete', 'add-to-gallery']);
+const galleryStore = useGalleryStore();
 const showDetail = ref(false);
 const refreshedUrl = ref(null);
 const urlError = ref(false);
@@ -90,7 +99,33 @@ const fetchSupabaseUrl = async () => {
     }
 };
 
-onMounted(fetchSupabaseUrl);
+onMounted(() => {
+    fetchSupabaseUrl();
+    // Load galleries if not already loaded
+    if (galleryStore.galleries.length === 0) {
+        galleryStore.fetchGalleries();
+    }
+});
+
+// Check if image is in all available galleries
+const isInAllGalleries = computed(() => {
+    // If no galleries exist, button should be disabled
+    if (galleryStore.galleries.length === 0) {
+        return true;
+    }
+
+    // If image has no galleries relationship, can't determine - enable button
+    if (!props.gallery.galleries || !Array.isArray(props.gallery.galleries)) {
+        return false;
+    }
+
+    // Check if image is in all galleries
+    const imageGalleryIds = props.gallery.galleries.map(g => g.id);
+    const allGalleryIds = galleryStore.galleries.map(g => g.id);
+
+    // Image is in all galleries if every gallery ID is in the image's gallery list
+    return allGalleryIds.every(id => imageGalleryIds.includes(id));
+});
 
 const imageUrl = computed(() => {
     // If we have a refreshed URL from a recent API call, use that
@@ -252,9 +287,17 @@ const closeDetail = () => {
     background-color: transparent;
 }
 
-.btn-outline-success:hover {
+.btn-outline-success:hover:not(:disabled) {
     background-color: #28a745;
     color: white;
+}
+
+.btn-outline-success:disabled {
+    color: #6c757d;
+    border-color: #6c757d;
+    background-color: #e9ecef;
+    cursor: not-allowed;
+    opacity: 0.65;
 }
 
 .btn-outline-primary {
@@ -281,6 +324,9 @@ const closeDetail = () => {
 .gallery-category {
   margin-top: 5px;
   margin-bottom: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .category-badge {

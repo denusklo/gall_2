@@ -46,7 +46,9 @@ class ImageController extends Controller {
 
         // Apply category filter
         if ($request->has('category_id') && !empty($request->category_id)) {
-            $query->where('category_id', $request->category_id);
+            $query->whereHas('categories', function($q) use ($request) {
+                $q->where('categories.id', $request->category_id);
+            });
         }
 
         // Apply sorting
@@ -75,7 +77,7 @@ class ImageController extends Controller {
 
         // Paginate the results
         $perPage = $request->get('per_page', 12);
-        $images = $query->with('category')->paginate($perPage);
+        $images = $query->with(['categories', 'galleries'])->paginate($perPage);
 
         return response()->json($images);
     }
@@ -90,7 +92,8 @@ class ImageController extends Controller {
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'exists:categories,id',
             'storage_path' => 'required|string',
             'storage_bucket' => 'required|string',
             'storage_url' => 'required|string',
@@ -104,7 +107,6 @@ class ImageController extends Controller {
             $image = Image::create([
                 'title' => $request->title,
                 'description' => $request->description,
-                'category_id' => $request->category_id,
                 'storage_path' => $request->storage_path,
                 'storage_bucket' => $request->storage_bucket,
                 'storage_url' => $request->storage_url,
@@ -114,6 +116,14 @@ class ImageController extends Controller {
                 'storage_provider' => $request->storage_provider ?? 'supabase',
                 'user_id' => auth()->id(),
             ]);
+
+            // Attach categories if provided
+            if ($request->has('category_ids') && is_array($request->category_ids)) {
+                $image->categories()->attach($request->category_ids);
+            }
+
+            // Load categories relationship for response
+            $image->load('categories');
 
             return response()->json($image, 201);
         } catch (\Exception $e) {
@@ -132,7 +142,7 @@ class ImageController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function show($id) {
-        $image = Image::with('category')->findOrFail($id);
+        $image = Image::with(['categories', 'galleries'])->findOrFail($id);
         return response()->json($image);
     }
 
@@ -149,15 +159,27 @@ class ImageController extends Controller {
         $request->validate([
             'title' => 'string|max:255',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'exists:categories,id',
         ]);
 
         try {
             $image->update($request->only([
                 'title',
-                'description',
-                'category_id'
+                'description'
             ]));
+
+            // Sync categories if provided
+            if ($request->has('category_ids')) {
+                if (is_array($request->category_ids)) {
+                    $image->categories()->sync($request->category_ids);
+                } else {
+                    $image->categories()->sync([]);
+                }
+            }
+
+            // Load relationships for response
+            $image->load(['categories', 'galleries']);
 
             return response()->json($image);
         } catch (\Exception $e) {
@@ -272,7 +294,8 @@ class ImageController extends Controller {
             'file' => 'required|file',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'exists:categories,id',
         ]);
 
         try {
@@ -320,7 +343,6 @@ class ImageController extends Controller {
             $image->user_id = auth()->id();
             $image->title = $request->title;
             $image->description = $request->description;
-            $image->category_id = $request->category_id;
             $image->storage_path = $filename;
             $image->storage_bucket = 'gallery-uploads';
             $image->storage_url = $signedUrl;
@@ -329,6 +351,14 @@ class ImageController extends Controller {
             $image->mime_type = $file->getMimeType();
             $image->size = $file->getSize();
             $image->save();
+
+            // Attach categories if provided
+            if ($request->has('category_ids') && is_array($request->category_ids)) {
+                $image->categories()->attach($request->category_ids);
+            }
+
+            // Load categories relationship for response
+            $image->load('categories');
 
             return response()->json($image, 201);
         } catch (\Exception $e) {

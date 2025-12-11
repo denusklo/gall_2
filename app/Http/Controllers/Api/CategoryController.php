@@ -15,9 +15,9 @@ class CategoryController extends Controller
     {
         $categories = Category::where('user_id', Auth::id())
             ->orderBy('name', 'asc')
-            ->withCount('galleries')
+            ->withCount('images')
             ->get();
-            
+
         return response()->json($categories);
     }
 
@@ -39,15 +39,18 @@ class CategoryController extends Controller
             'description' => $request->description,
         ]);
 
+        // Load the images count for consistency with index()
+        $category->loadCount('images');
+
         return response()->json($category, 201);
     }
 
     public function show($id)
     {
         $category = Category::where('user_id', Auth::id())
-            ->withCount('galleries')
+            ->withCount('images')
             ->findOrFail($id);
-            
+
         return response()->json($category);
     }
 
@@ -68,23 +71,26 @@ class CategoryController extends Controller
             'name' => $request->name,
             'description' => $request->description,
         ]);
-        
+
+        // Load the images count for consistency with index()
+        $category->loadCount('images');
+
         return response()->json($category);
     }
 
     public function destroy($id)
     {
         $category = Category::where('user_id', Auth::id())->findOrFail($id);
-        
-        // Check if there are galleries in this category
-        if ($category->galleries()->count() > 0) {
+
+        // Check if there are images in this category
+        if ($category->images()->count() > 0) {
             return response()->json([
-                'message' => 'Cannot delete category with galleries. Remove or reassign galleries first.'
+                'message' => 'Cannot delete category with images. Remove or reassign images first.'
             ], 422);
         }
-        
+
         $category->delete();
-        
+
         return response()->json(null, 204);
     }
 }

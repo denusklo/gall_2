@@ -22,13 +22,13 @@
 
                     <!-- resources/js/components/Gallery/EditModal.vue - Add to the form -->
                     <div class="form-group">
-                        <label for="category">Category</label>
-                        <select id="category" v-model="formData.category_id" class="form-control" :disabled="loading">
-                            <option value="">No Category</option>
+                        <label for="categories">Categories</label>
+                        <select id="categories" v-model="formData.category_ids" class="form-control" :disabled="loading" multiple size="5">
                             <option v-for="cat in categories" :key="cat.id" :value="cat.id">
                                 {{ cat.name }}
                             </option>
                         </select>
+                        <small class="form-text text-muted">Hold Ctrl (Cmd on Mac) to select multiple categories</small>
                     </div>
 
                     <div class="image-preview">
@@ -52,7 +52,7 @@
 <script setup>
 import { ref, defineProps, defineEmits, onMounted, computed } from 'vue';
 import axios from 'axios';
-import { useGalleryStore } from '../../stores/gallery';
+import { useImageStore } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
 
 const props = defineProps({
@@ -63,7 +63,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'update-complete']);
-const galleryStore = useGalleryStore();
+const imageStore = useImageStore();
 const loading = ref(false);
 const categoryStore = useCategoryStore();
 const categories = computed(() => categoryStore.categories);
@@ -72,7 +72,7 @@ const supabaseUrl = ref('');
 const formData = ref({
     title: '',
     description: '',
-    category_id: ''
+    category_ids: []
 });
 
 const fetchSupabaseUrl = async () => {
@@ -111,7 +111,10 @@ const blob_url = computed(() => {
 onMounted(() => {
     formData.value.title = props.gallery.title;
     formData.value.description = props.gallery.description || '';
-    formData.value.category_id = props.gallery.category_id || '';
+    // Load existing categories from the gallery object
+    formData.value.category_ids = props.gallery.categories
+        ? props.gallery.categories.map(cat => cat.id)
+        : [];
 
     fetchSupabaseUrl();
 
@@ -123,19 +126,19 @@ onMounted(() => {
 
 const updateGallery = async () => {
   loading.value = true;
-  
+
   try {
-    await galleryStore.updateGallery(props.gallery.id, {
+    await imageStore.updateImage(props.gallery.id, {
       title: formData.value.title,
       description: formData.value.description,
-      category_id: formData.value.category_id
+      category_ids: formData.value.category_ids
     });
-    
-    alert('Gallery updated successfully!');
+
+    alert('Image updated successfully!');
     emit('update-complete');
     emit('close');
   } catch (error) {
-    alert('Failed to update gallery. Please try again.');
+    alert('Failed to update image. Please try again.');
   } finally {
     loading.value = false;
   }

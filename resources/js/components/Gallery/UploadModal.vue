@@ -27,8 +27,14 @@
 
                     <div class="form-group">
                         <label for="file">Select Image</label>
-                        <input type="file" id="file" @change="handleFileChange" class="form-control" accept="image/*"
-                            required :disabled="isUploading">
+                        <div class="file-input-wrapper">
+                            <input type="file" id="file" @change="handleFileChange" class="file-input-hidden" accept="image/*"
+                                required :disabled="isUploading">
+                            <label for="file" class="file-input-button" :class="{ 'disabled': isUploading }">
+                                <i class="fas fa-image"></i>
+                                <span>{{ selectedFile ? selectedFile.name : 'Choose Image File' }}</span>
+                            </label>
+                        </div>
                         <small class="form-text text-muted">
                             Max file size: 50MB. Supported formats: JPG, PNG, GIF, WEBP
                         </small>
@@ -36,13 +42,13 @@
 
                     <!-- resources/js/components/Gallery/UploadModal.vue - Add to the form -->
                     <div class="form-group">
-                        <label for="category">Category (optional)</label>
-                        <select id="category" v-model="category" class="form-control" :disabled="isUploading">
-                            <option value="">No Category</option>
+                        <label for="categories">Categories (optional)</label>
+                        <select id="categories" v-model="categoryIds" class="form-control" :disabled="isUploading" multiple size="5">
                             <option v-for="cat in categories" :key="cat.id" :value="cat.id">
                                 {{ cat.name }}
                             </option>
                         </select>
+                        <small class="form-text text-muted">Hold Ctrl (Cmd on Mac) to select multiple categories</small>
                     </div>
 
                     <div v-if="previewUrl" class="image-preview">
@@ -69,14 +75,14 @@
                             Cancel
                         </button>
                         <button type="submit" class="btn btn-primary" :disabled="!selectedFile || isUploading">
-                            <span v-if="isUploading">
+                            <span v-if="isUploadingSupabase">
                                 Uploading... ({{ uploadProgress }}%)
                             </span>
                             <span v-else>Upload to Supabase</span>
                         </button>
                         <button type="button" @click="uploadToVercel" class="btn btn-vercel" :disabled="!selectedFile || isUploading">
                             <span v-if="isUploadingVercel">
-                                Uploading to Vercel...
+                                Uploading... ({{ uploadProgress }}%)
                             </span>
                             <span v-else>Upload to Vercel</span>
                         </button>
@@ -104,7 +110,7 @@ import { useCategoryStore } from '../../stores/category';
 const emit = defineEmits(['close', 'upload-complete']);
 const imageStore = useImageStore();
 const categoryStore = useCategoryStore();
-const category = ref('');
+const categoryIds = ref([]);
 const categories = computed(() => categoryStore.categories);
 
 const title = ref('');
@@ -114,8 +120,9 @@ const previewUrl = ref('');
 const uploadError = ref('');
 const isSuccess = ref(false);
 const isUploadingVercel = ref(false);
+const isUploadingSupabase = ref(false);
 
-const isUploading = computed(() => imageStore.loading || isUploadingVercel.value);
+const isUploading = computed(() => imageStore.loading || isUploadingVercel.value || isUploadingSupabase.value);
 const uploadProgress = computed(() => imageStore.uploadProgress);
 
 onMounted(() => {
@@ -187,6 +194,7 @@ const uploadFile = async () => {
   }
 
   uploadError.value = '';
+  isUploadingSupabase.value = true;
 
   try {
     // Upload using Image store
@@ -194,7 +202,7 @@ const uploadFile = async () => {
       selectedFile.value,
       title.value,
       description.value,
-      category.value
+      categoryIds.value
     );
 
     // Show success message
@@ -207,12 +215,14 @@ const uploadFile = async () => {
     setTimeout(() => {
       title.value = '';
       description.value = '';
-      category.value = '';
+      categoryIds.value = [];
       selectedFile.value = null;
       previewUrl.value = '';
     }, 300);
   } catch (error) {
     uploadError.value = error.message || 'Failed to upload file. Please try again.';
+  } finally {
+    isUploadingSupabase.value = false;
   }
 };
 
@@ -231,7 +241,7 @@ const uploadToVercel = async () => {
       selectedFile.value,
       title.value,
       description.value,
-      category.value
+      categoryIds.value
     );
 
     // Show success message
@@ -244,7 +254,7 @@ const uploadToVercel = async () => {
     setTimeout(() => {
       title.value = '';
       description.value = '';
-      category.value = '';
+      categoryIds.value = [];
       selectedFile.value = null;
       previewUrl.value = '';
     }, 300);
@@ -325,6 +335,58 @@ const closeModal = () => {
     padding: 8px;
     border: 1px solid #ddd;
     border-radius: 4px;
+}
+
+.file-input-wrapper {
+    position: relative;
+}
+
+.file-input-hidden {
+    position: absolute;
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    z-index: -1;
+}
+
+.file-input-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    width: 100%;
+    justify-content: center;
+}
+
+.file-input-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.file-input-button.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.file-input-button i {
+    font-size: 1.2rem;
+}
+
+.file-input-button span {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .image-preview {

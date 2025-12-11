@@ -51,7 +51,7 @@ export const useImageStore = defineStore('image', {
     },
 
     // Original Supabase upload method
-    async uploadFile(file, title, description = '', categoryId = null) {
+    async uploadFile(file, title, description = '', categoryIds = []) {
       this.loading = true;
       this.uploadProgress = 0;
 
@@ -61,7 +61,11 @@ export const useImageStore = defineStore('image', {
         formData.append('file', file);
         formData.append('title', title);
         formData.append('description', description || '');
-        if (categoryId) formData.append('category_id', categoryId);
+        if (categoryIds && categoryIds.length > 0) {
+          categoryIds.forEach((id, index) => {
+            formData.append(`category_ids[${index}]`, id);
+          });
+        }
 
         // Send to our backend endpoint (now handles the Supabase upload)
         const response = await axios.post('/apiv/_1/images/upload', formData, {
@@ -91,7 +95,7 @@ export const useImageStore = defineStore('image', {
     },
 
     // Vercel Blob upload method - Manual implementation (no SDK)
-    async uploadFileToVercel(file, title, description = '', categoryId = null) {
+    async uploadFileToVercel(file, title, description = '', categoryIds = []) {
       this.loading = true;
       this.uploadProgress = 0;
 
@@ -104,7 +108,7 @@ export const useImageStore = defineStore('image', {
           size: file.size,
           title: title,
           description: description,
-          category_id: categoryId
+          category_ids: categoryIds
         });
 
         const { clientToken, pathname, metadata } = tokenResponse.data;
@@ -201,7 +205,13 @@ export const useImageStore = defineStore('image', {
 
     async updateImage(id, data) {
       try {
-        const response = await axios.put(`/apiv/_1/images/${id}`, data);
+        // If data contains category_ids, ensure it's an array
+        const updateData = { ...data };
+        if (updateData.category_ids && !Array.isArray(updateData.category_ids)) {
+          updateData.category_ids = [updateData.category_ids];
+        }
+
+        const response = await axios.put(`/apiv/_1/images/${id}`, updateData);
         const index = this.images.findIndex(image => image.id === id);
 
         if (index !== -1) {

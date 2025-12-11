@@ -110,7 +110,7 @@ class GalleryController extends Controller {
      */
     public function show($id) {
         $gallery = Gallery::with(['coverImage', 'user', 'images' => function ($query) {
-            $query->with('category');
+            $query->with('categories');
         }])->findOrFail($id);
 
         return response()->json($gallery);

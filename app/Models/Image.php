@@ -29,11 +29,10 @@ class Image extends Model {
         'user_id',
         'title',
         'description',
-        'category_id',
         'storage_path',
         'storage_bucket',
         'storage_url',
-        'storage_provider', // Add this line
+        'storage_provider',
         'filename',
         'mime_type',
         'size',
@@ -62,10 +61,11 @@ class Image extends Model {
     }
 
     /**
-     * Get the category that owns the image.
+     * Get the categories that this image belongs to.
      */
-    public function category() {
-        return $this->belongsTo(Category::class);
+    public function categories() {
+        return $this->belongsToMany(Category::class, 'image_category')
+                    ->withTimestamps();
     }
 
     /**

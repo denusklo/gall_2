@@ -84,6 +84,7 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue';
 import { useImageStore } from '../../stores/image';
+import { useCategoryStore } from '../../stores/category';
 import GalleryItem from './GalleryItem.vue';
 import UploadModal from './UploadModal.vue';
 import EditModal from './EditModal.vue';
@@ -98,6 +99,7 @@ import ConfirmDialog from './ConfirmDialog.vue';
 import AddToGalleryModal from './AddToGalleryModal.vue';
 
 const imageStore = useImageStore();
+const categoryStore = useCategoryStore();
 const showUploadModal = ref(false);
 const imageToEdit = ref(null);
 const currentFilters = ref({});
@@ -163,6 +165,7 @@ const refreshGallery = () => {
         currentFilters.value
     );
     imageStore.fetchStats();
+    categoryStore.fetchCategories();
 };
 
 const onCategoryChanged = (categoryId) => {
@@ -199,7 +202,12 @@ const addToGallery = (image) => {
 const onImageAddedToGallery = () => {
     console.log('[GalleryIndex] Image added to gallery successfully');
     imageToAddToGallery.value = null;
-    // Optionally show a success message
+    // Refresh images to update the galleries relationship
+    // This will recalculate the isInAllGalleries computed property
+    imageStore.fetchImages(
+        imageStore.pagination.currentPage,
+        currentFilters.value
+    );
 };
 
 </script>
