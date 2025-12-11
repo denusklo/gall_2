@@ -4,7 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use App\Http\Controllers\FirebaseAdminController;
+use App\Http\Controllers\Firebase\FirebaseAdminController;
 
 class FirebaseAdminMiddleware
 {

@@ -58,11 +58,22 @@ class RequestsController extends Controller
                 }
             }
             
-            return view('requests.index', compact('data'));
+            // Paginate the data
+            $perPage = 10;
+            $currentPage = request()->get('page', 1);
+            $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+                array_slice($data, ($currentPage - 1) * $perPage, $perPage),
+                count($data),
+                $perPage,
+                $currentPage,
+                ['path' => request()->url(), 'query' => request()->query()]
+            );
+
+            return view('requests.index', ['data' => $paginator]);
         } else {
             // Regular user view logic - see only their requests
             $data = $database->getReference('Requests/' . $uid)->getValue();
-            
+
             // If $data is null, initialize as empty array
             if ($data === null) {
                 $data = [];
@@ -76,8 +87,19 @@ class RequestsController extends Controller
                 }
                 $data = $formattedData;
             }
-            
-            return view('requests.index', compact('data'));
+
+            // Paginate the data
+            $perPage = 10;
+            $currentPage = request()->get('page', 1);
+            $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+                array_slice($data, ($currentPage - 1) * $perPage, $perPage),
+                count($data),
+                $perPage,
+                $currentPage,
+                ['path' => request()->url(), 'query' => request()->query()]
+            );
+
+            return view('requests.index', ['data' => $paginator]);
         }
     }
     /**
@@ -127,7 +149,7 @@ class RequestsController extends Controller
 
         $database->getReference('Requests/' . session()->get('verified_user_id'))->push($data);
 
-        return redirect()->route('requests.index');
+        return redirect()->route('requests.index')->with('success', 'Request created successfully!');
     }
 
 

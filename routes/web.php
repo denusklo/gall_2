@@ -74,7 +74,7 @@ Route::prefix('firebase')->as('firebase.')->group(function () {
 Route::middleware( ['firebase.auth'] )->group(function() {    
     
     // Route::get('home', [App\Http\Controllers\RequestController::class, 'index'])->name('home');
-    Route::resource('request', RequestController::class);
+    Route::resource('my', RequestController::class)->names('request');
     Route::resource('requests', RequestsController::class);
 
     Route::get('users', [FirebaseUserController::class, 'index'])

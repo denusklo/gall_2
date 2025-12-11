@@ -31,30 +31,32 @@
                         </thead>
                         <tbody>
                             @foreach ($users as $user)
-                                <tr>
-                                    <td>{{ $user->displayName ?? 'No name' }}</td>
-                                    <td>{{ $user->email }}</td>
-                                    <td>
-                                        @if (isset($user->customClaims['admin']) && $user->customClaims['admin'] === true)
-                                            <span class="badge bg-success">Admin</span>
-                                        @else
-                                            <span class="badge bg-secondary">Regular User</span>
-                                        @endif
-                                    </td>
-                                    <td>
-                                        @if (isset($user->customClaims['admin']) && $user->customClaims['admin'] === true)
-                                            <form action="{{ route('admin.remove-admin', $user->uid) }}" method="POST" class="d-inline">
-                                                @csrf
-                                                <button type="submit" class="btn btn-sm btn-warning">Remove Admin</button>
-                                            </form>
-                                        @else
-                                            <form action="{{ route('admin.make-admin', $user->uid) }}" method="POST" class="d-inline">
-                                                @csrf
-                                                <button type="submit" class="btn btn-sm btn-primary">Make Admin</button>
-                                            </form>
-                                        @endif
-                                    </td>
-                                </tr>
+                                @if ($user->uid !== session()->get('verified_user_id'))
+                                    <tr>
+                                        <td>{{ $user->displayName ?? 'No name' }}</td>
+                                        <td>{{ $user->email }}</td>
+                                        <td>
+                                            @if (isset($user->customClaims['admin']) && $user->customClaims['admin'] === true)
+                                                <span class="badge bg-success">Admin</span>
+                                            @else
+                                                <span class="badge badge-info">Regular User</span>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            @if (isset($user->customClaims['admin']) && $user->customClaims['admin'] === true)
+                                                <form action="{{ route('admin.remove-admin', $user->uid) }}" method="POST" class="d-inline">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-sm btn-warning">Remove Admin</button>
+                                                </form>
+                                            @else
+                                                <form action="{{ route('admin.make-admin', $user->uid) }}" method="POST" class="d-inline">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-sm btn-primary">Make Admin</button>
+                                                </form>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endif
                             @endforeach
                         </tbody>
                     </table>

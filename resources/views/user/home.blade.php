@@ -5,19 +5,6 @@
 
 <div class="container">
     <div class="row">
-        <div class="col-md-12">
-            @if (session()->get('error'))
-                <h5 class='alert alert-warning'>
-                    {{session()->get('error')}}
-                </h5>
-            @elseif (session()->get('success'))
-                <h5 class='alert alert-success'>
-                    {{session()->get('success')}}
-                </h5>
-            @endif
-            <div class="row justify-content-center">
-        </div>
-    </div>
         <div class="col-md-9">
             <div class="card">
                 <div class="card-header">Your Request</div>
@@ -117,7 +104,7 @@
                                                                     </div>
                                                                 </div>
                                                                 <br>
-                                                                <input type="hidden" name="ref" value="{{$loop->iteration}}">
+                                                                <input type="hidden" name="ref" value="{{$arrayKey}}">
                                                                 <button class="btn btn-primary" type="submit">Submit update</button>
                                                             </form>
                                                         </div>
@@ -155,4 +142,36 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('scripts')
+<script>
+    // Show toast notifications based on flash messages
+    @if(session('success'))
+        iziToast.success({
+            title: 'Success',
+            message: '{{ session('success') }}',
+            position: 'topRight',
+            timeout: 3000
+        });
+    @endif
+
+    @if(session('error'))
+        iziToast.error({
+            title: 'Error',
+            message: '{{ session('error') }}',
+            position: 'topRight',
+            timeout: 3000
+        });
+    @endif
+
+    @if(session('warning'))
+        iziToast.warning({
+            title: 'Warning',
+            message: '{{ session('warning') }}',
+            position: 'topRight',
+            timeout: 3000
+        });
+    @endif
+</script>
 @endsection
