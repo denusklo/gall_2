@@ -12,25 +12,30 @@
                     {{ uploadError }}
                 </div>
 
-                <form @submit.prevent="startUpload" v-if="!isComplete">
+                <form v-if="!isComplete">
                     <!-- resources/js/components/Gallery/BulkUploadModal.vue - Add before the file selection form group -->
                     <div class="form-group">
-                        <label for="bulk-category">Default Category (optional)</label>
-                        <select id="bulk-category" v-model="defaultCategory" class="form-control"
-                            :disabled="isUploading">
-                            <option value="">No Category</option>
+                        <label for="bulk-categories">Default Categories (optional)</label>
+                        <select id="bulk-categories" v-model="defaultCategoryIds" class="form-control"
+                            :disabled="isUploading" multiple size="5">
                             <option v-for="cat in categories" :key="cat.id" :value="cat.id">
                                 {{ cat.name }}
                             </option>
                         </select>
                         <small class="form-text text-muted">
-                            This category will be applied to all uploaded images.
+                            Hold Ctrl (Cmd on Mac) to select multiple categories. These will be applied to all uploaded images.
                         </small>
                     </div>
                     <div class="form-group">
                         <label for="files">Select Multiple Images</label>
-                        <input type="file" id="files" @change="handleFilesChange" class="form-control" accept="image/*"
-                            required multiple :disabled="isUploading">
+                        <div class="file-input-wrapper">
+                            <input type="file" id="files" @change="handleFilesChange" class="file-input-hidden" accept="image/*"
+                                required multiple :disabled="isUploading">
+                            <label for="files" class="file-input-button" :class="{ 'disabled': isUploading }">
+                                <i class="fas fa-images"></i>
+                                <span>{{ selectedFiles.length > 0 ? `${selectedFiles.length} file(s) selected` : 'Choose Multiple Images' }}</span>
+                            </label>
+                        </div>
                         <small class="form-text text-muted">
                             Max 10 files at once. Supported formats: JPG, PNG, GIF, WEBP
                         </small>
@@ -85,12 +90,19 @@
                         <button type="button" @click="closeModal" class="btn btn-secondary" :disabled="isUploading">
                             Cancel
                         </button>
-                        <button type="submit" class="btn btn-primary"
+                        <button type="button" @click="startUploadSupabase" class="btn btn-primary"
                             :disabled="selectedFiles.length === 0 || isUploading">
-                            <span v-if="isUploading">
-                                Uploading... ({{ uploadedCount }}/{{ selectedFiles.length }})
+                            <span v-if="isUploadingSupabase">
+                                Uploading to Supabase... ({{ uploadedCount }}/{{ selectedFiles.length }})
                             </span>
-                            <span v-else>Upload {{ selectedFiles.length }} Files</span>
+                            <span v-else>Upload to Supabase</span>
+                        </button>
+                        <button type="button" @click="startUploadVercel" class="btn btn-vercel"
+                            :disabled="selectedFiles.length === 0 || isUploading">
+                            <span v-if="isUploadingVercel">
+                                Uploading to Vercel... ({{ uploadedCount }}/{{ selectedFiles.length }})
+                            </span>
+                            <span v-else>Upload to Vercel</span>
                         </button>
                     </div>
                 </form>
@@ -113,14 +125,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useGalleryStore } from '../../stores/gallery';
+import { useImageStore } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
 
 const emit = defineEmits(['close', 'upload-complete']);
-const galleryStore = useGalleryStore();
+const imageStore = useImageStore();
 const categoryStore = useCategoryStore();
 const categories = computed(() => categoryStore.categories);
-const defaultCategory = ref('');
+const defaultCategoryIds = ref([]);
 
 // File selection state
 const selectedFiles = ref([]);
@@ -128,7 +140,8 @@ const filePreviewUrls = ref([]);
 const fileTitles = ref([]);
 
 // Upload state
-const isUploading = ref(false);
+const isUploadingSupabase = ref(false);
+const isUploadingVercel = ref(false);
 const uploadError = ref('');
 const fileProgress = ref([]);
 const fileStatuses = ref([]);
@@ -136,6 +149,8 @@ const uploadedCount = ref(0);
 const failedCount = ref(0);
 const totalFiles = ref(0);
 const isComplete = ref(false);
+
+const isUploading = computed(() => isUploadingSupabase.value || isUploadingVercel.value);
 
 const MAX_FILES = 10;
 
@@ -221,13 +236,13 @@ const formatFileSize = (bytes) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const startUpload = async () => {
+const startUploadSupabase = async () => {
     if (selectedFiles.value.length === 0) {
         uploadError.value = 'Please select files to upload.';
         return;
     }
 
-    isUploading.value = true;
+    isUploadingSupabase.value = true;
     uploadError.value = '';
     uploadedCount.value = 0;
     failedCount.value = 0;
@@ -241,8 +256,8 @@ const startUpload = async () => {
         fileStatuses.value[i] = 'Uploading...';
 
         try {
-            // Create a custom upload function that updates progress for this file
-            await uploadFile(file, title, i);
+            // Use the imageStore's uploadFile method (Supabase)
+            await uploadFileSupabase(file, title, i);
 
             fileProgress.value[i] = 100;
             fileStatuses.value[i] = 'Complete';
@@ -255,102 +270,151 @@ const startUpload = async () => {
         }
     }
 
-    isUploading.value = false;
+    isUploadingSupabase.value = false;
     isComplete.value = true;
     emit('upload-complete');
 };
 
-const uploadFile = async (file, title, index) => {
+const startUploadVercel = async () => {
+    if (selectedFiles.value.length === 0) {
+        uploadError.value = 'Please select files to upload.';
+        return;
+    }
+
+    isUploadingVercel.value = true;
+    uploadError.value = '';
+    uploadedCount.value = 0;
+    failedCount.value = 0;
+    totalFiles.value = selectedFiles.value.length;
+
+    // Process files sequentially to avoid overwhelming the server
+    for (let i = 0; i < selectedFiles.value.length; i++) {
+        const file = selectedFiles.value[i];
+        const title = fileTitles.value[i] || file.name;
+
+        fileStatuses.value[i] = 'Uploading...';
+
+        try {
+            // Use the imageStore's uploadFileToVercel method
+            await uploadFileVercel(file, title, i);
+
+            fileProgress.value[i] = 100;
+            fileStatuses.value[i] = 'Complete';
+            uploadedCount.value++;
+        } catch (error) {
+            console.error(`Error uploading file ${i}:`, error);
+            fileProgress.value[i] = 0;
+            fileStatuses.value[i] = 'Failed';
+            failedCount.value++;
+        }
+    }
+
+    isUploadingVercel.value = false;
+    isComplete.value = true;
+    emit('upload-complete');
+};
+
+const uploadFileSupabase = async (file, title, index) => {
     return new Promise(async (resolve, reject) => {
         try {
-            // Get presigned URL
-            const presignedUrlResponse = await axios.post('/api/upload-blob', {
-                filename: file.name,
-                contentType: file.type,
-            });
+            fileStatuses.value[index] = 'Uploading to Supabase...';
 
-            if (!presignedUrlResponse.data || !presignedUrlResponse.data.uploadUrl) {
-                throw new Error('Failed to get upload URL');
+            // Create FormData similar to single upload
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('title', title);
+            formData.append('description', '');
+
+            if (defaultCategoryIds.value && defaultCategoryIds.value.length > 0) {
+                defaultCategoryIds.value.forEach((id, idx) => {
+                    formData.append(`category_ids[${idx}]`, id);
+                });
             }
 
-            const { uploadUrl, url, pathname } = presignedUrlResponse.data;
-
-            // Upload to Vercel Blob
-            const formData = new FormData();
-
-            // Add all the fields required by Vercel Blob
-            Object.entries(presignedUrlResponse.data.blob).forEach(([key, value]) => {
-                formData.append(key, value);
+            // Upload using axios to track progress
+            const response = await axios.post('/apiv/_1/images/upload', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                },
+                onUploadProgress: (progressEvent) => {
+                    const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    fileProgress.value[index] = progress;
+                    fileStatuses.value[index] = `Uploading... ${progress}%`;
+                }
             });
 
-            // Add the file
-            formData.append('file', file);
-
-            // Use XMLHttpRequest to track upload progress
-            const xhr = new XMLHttpRequest();
-
-            xhr.open('POST', uploadUrl, true);
-
-            xhr.upload.onprogress = (event) => {
-                if (event.lengthComputable) {
-                    // Update progress for this specific file
-                    fileProgress.value[index] = Math.round((event.loaded * 80) / event.total); // 80% for upload
-                    fileStatuses.value[index] = 'Uploading...';
-                }
-            };
-
-            xhr.onload = async () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    // Upload successful, now save metadata
-                    fileProgress.value[index] = 90; // 90% after upload complete
-                    fileStatuses.value[index] = 'Saving...';
-
-                    try {
-                        // Save metadata to database
-                        const galleryData = {
-                            title,
-                            description: '',
-                            category_id: defaultCategory.value || null,
-                            blob_url: url,
-                            blob_id: pathname.split('/').pop(),
-                            filename: file.name,
-                            mime_type: file.type,
-                            size: file.size,
-                        };
-
-                        await axios.post('/api/galleries', galleryData);
-
-                        fileProgress.value[index] = 100; // 100% complete
-                        fileStatuses.value[index] = 'Complete';
-                        resolve();
-                    } catch (error) {
-                        fileProgress.value[index] = 0;
-                        fileStatuses.value[index] = 'Failed to save';
-                        reject(error);
-                    }
-                } else {
-                    fileProgress.value[index] = 0;
-                    fileStatuses.value[index] = 'Upload failed';
-                    reject({
-                        status: xhr.status,
-                        statusText: xhr.statusText
-                    });
-                }
-            };
-
-            xhr.onerror = () => {
-                fileProgress.value[index] = 0;
-                fileStatuses.value[index] = 'Network error';
-                reject({
-                    status: xhr.status,
-                    statusText: xhr.statusText
-                });
-            };
-
-            xhr.send(formData);
+            fileProgress.value[index] = 100;
+            fileStatuses.value[index] = 'Complete';
+            resolve(response.data);
         } catch (error) {
             fileProgress.value[index] = 0;
-            fileStatuses.value[index] = 'Request failed';
+            fileStatuses.value[index] = 'Failed';
+            reject(error);
+        }
+    });
+};
+
+const uploadFileVercel = async (file, title, index) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Step 1: Get client token
+            fileStatuses.value[index] = 'Requesting token...';
+            fileProgress.value[index] = 10;
+
+            const tokenResponse = await axios.post('/apiv/_1/vercel/generate-client-token', {
+                filename: file.name,
+                content_type: file.type,
+                size: file.size,
+                title: title,
+                description: '',
+                category_ids: defaultCategoryIds.value
+            });
+
+            const { clientToken, pathname, metadata } = tokenResponse.data;
+
+            // Step 2: Upload to Vercel Blob
+            const uploadUrl = `https://vercel.com/api/blob/${pathname}`;
+            fileStatuses.value[index] = 'Uploading to Vercel...';
+            fileProgress.value[index] = 20;
+
+            // Create clean axios instance for Vercel
+            const vercelAxios = axios.create();
+            vercelAxios.defaults.headers.common = {};
+
+            const uploadResponse = await vercelAxios.put(uploadUrl, file, {
+                headers: {
+                    'Authorization': `Bearer ${clientToken}`,
+                    'Content-Type': file.type,
+                },
+                onUploadProgress: (progressEvent) => {
+                    // Map progress from 20% to 80%
+                    const uploadProgress = Math.round((progressEvent.loaded * 60) / progressEvent.total);
+                    fileProgress.value[index] = 20 + uploadProgress;
+                    fileStatuses.value[index] = `Uploading... ${fileProgress.value[index]}%`;
+                }
+            });
+
+            // Step 3: Save to database
+            fileStatuses.value[index] = 'Saving...';
+            fileProgress.value[index] = 90;
+
+            const callbackResponse = await axios.post('/apiv/_1/vercel/upload-callback', {
+                blob: {
+                    url: uploadResponse.data.url,
+                    pathname: uploadResponse.data.pathname || pathname,
+                    size: uploadResponse.data.size || file.size,
+                    contentType: uploadResponse.data.contentType || file.type,
+                    downloadUrl: uploadResponse.data.downloadUrl
+                },
+                metadata: metadata
+            });
+
+            fileProgress.value[index] = 100;
+            fileStatuses.value[index] = 'Complete';
+            resolve(callbackResponse.data.image);
+        } catch (error) {
+            fileProgress.value[index] = 0;
+            fileStatuses.value[index] = 'Failed';
             reject(error);
         }
     });
@@ -426,6 +490,58 @@ const closeModal = () => {
     padding: 8px;
     border: 1px solid #ddd;
     border-radius: 4px;
+}
+
+.file-input-wrapper {
+    position: relative;
+}
+
+.file-input-hidden {
+    position: absolute;
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    z-index: -1;
+}
+
+.file-input-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    width: 100%;
+    justify-content: center;
+}
+
+.file-input-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.file-input-button.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.file-input-button i {
+    font-size: 1.2rem;
+}
+
+.file-input-button span {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .selected-files {
@@ -611,9 +727,26 @@ const closeModal = () => {
     color: white;
 }
 
+.btn-primary:hover {
+    background-color: #0069d9;
+}
+
 .btn-secondary {
     background-color: #6c757d;
     color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-vercel {
+    background-color: #000000;
+    color: white;
+}
+
+.btn-vercel:hover {
+    background-color: #333333;
 }
 
 .btn-sm {

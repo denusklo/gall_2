@@ -34,9 +34,10 @@ class Category extends Model
         });
     }
 
-    public function galleries()
+    public function images()
     {
-        return $this->hasMany(Gallery::class);
+        return $this->belongsToMany(Image::class, 'image_category')
+                    ->withTimestamps();
     }
 
     public function user()

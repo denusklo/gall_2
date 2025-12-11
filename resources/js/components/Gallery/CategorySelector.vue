@@ -10,7 +10,7 @@
             <div v-for="category in categories" :key="category.id" class="category-item"
                 :class="{ active: activeCategory === category.id }" @click="selectCategory(category.id)">
                 <span class="category-name">{{ category.name }}</span>
-                <span class="category-count">{{ category.galleries_count }}</span>
+                <span class="category-count">{{ category.images_count }}</span>
             </div>
         </div>
 
@@ -84,10 +84,10 @@
                             <h4>Danger Zone</h4>
                             <p>Deleting a category cannot be undone.</p>
                             <button type="button" @click="confirmDeleteCategory" class="btn btn-danger"
-                                :disabled="currentCategory && currentCategory.galleries_count > 0">
+                                :disabled="currentCategory && currentCategory.images_count > 0">
                                 Delete Category
                             </button>
-                            <small v-if="currentCategory && currentCategory.galleries_count > 0" class="text-danger">
+                            <small v-if="currentCategory && currentCategory.images_count > 0" class="text-danger">
                                 Cannot delete category with images. Move or delete images first.
                             </small>
                         </div>
@@ -110,12 +110,12 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useCategoryStore } from '../../stores/category';
-import { useGalleryStore } from '../../stores/gallery';
+import { useImageStore } from '../../stores/image';
 
 const emit = defineEmits(['category-changed']);
 
 const categoryStore = useCategoryStore();
-const galleryStore = useGalleryStore();
+const imageStore = useImageStore();
 
 const activeCategory = ref(null);
 const showAddCategory = ref(false);
@@ -129,7 +129,7 @@ const totalImages = computed(() => {
         return 0; // Return 0 if categories.value is not an array
     }
     return categories.value.reduce((total, category) => {
-        return total + (category.galleries_count || 0);
+        return total + (category.images_count || 0);
     }, 0);
 });
 
@@ -163,7 +163,7 @@ initialize();
 
 const selectCategory = (categoryId) => {
     activeCategory.value = categoryId;
-    galleryStore.setActiveCategory(categoryId);
+    imageStore.setActiveCategory(categoryId);
     emit('category-changed', categoryId);
 };
 
@@ -200,7 +200,7 @@ const confirmDeleteCategory = async () => {
     if (!activeCategory.value) return;
 
     // Double-check that there are no images in this category
-    if (currentCategory.value && currentCategory.value.galleries_count > 0) {
+    if (currentCategory.value && currentCategory.value.images_count > 0) {
         alert('Cannot delete category with images. Move or delete images first.');
         return;
     }
@@ -210,7 +210,7 @@ const confirmDeleteCategory = async () => {
             await categoryStore.deleteCategory(activeCategory.value);
 
             activeCategory.value = null;
-            galleryStore.setActiveCategory(null);
+            imageStore.setActiveCategory(null);
             emit('category-changed', null);
             showEditCategory.value = false;
         } catch (error) {

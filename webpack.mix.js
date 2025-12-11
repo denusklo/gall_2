@@ -3,6 +3,8 @@ const path = require('path');
 const mix = require('laravel-mix');
 
 mix.js('resources/js/galleryApp.js', 'public/js')
+   .js('resources/js/galleriesApp.js', 'public/js')
+   .js('resources/js/galleryDetailApp.js', 'public/js')
    .vue()
    .sass('resources/sass/app.scss', 'public/css');
 

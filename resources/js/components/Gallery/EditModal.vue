@@ -22,17 +22,17 @@
 
                     <!-- resources/js/components/Gallery/EditModal.vue - Add to the form -->
                     <div class="form-group">
-                        <label for="category">Category</label>
-                        <select id="category" v-model="formData.category_id" class="form-control" :disabled="loading">
-                            <option value="">No Category</option>
+                        <label for="categories">Categories</label>
+                        <select id="categories" v-model="formData.category_ids" class="form-control" :disabled="loading" multiple size="5">
                             <option v-for="cat in categories" :key="cat.id" :value="cat.id">
                                 {{ cat.name }}
                             </option>
                         </select>
+                        <small class="form-text text-muted">Hold Ctrl (Cmd on Mac) to select multiple categories</small>
                     </div>
 
                     <div class="image-preview">
-                        <img :src="gallery.blob_url" :alt="gallery.title">
+                        <img :src="blob_url" :alt="gallery.title">
                     </div>
 
                     <div class="modal-footer">
@@ -51,7 +51,8 @@
 
 <script setup>
 import { ref, defineProps, defineEmits, onMounted, computed } from 'vue';
-import { useGalleryStore } from '../../stores/gallery';
+import axios from 'axios';
+import { useImageStore } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
 
 const props = defineProps({
@@ -62,21 +63,60 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'update-complete']);
-const galleryStore = useGalleryStore();
+const imageStore = useImageStore();
 const loading = ref(false);
 const categoryStore = useCategoryStore();
 const categories = computed(() => categoryStore.categories);
+const supabaseUrl = ref('');
 
 const formData = ref({
     title: '',
     description: '',
-    category_id: ''
+    category_ids: []
+});
+
+const fetchSupabaseUrl = async () => {
+    const cachedUrl = localStorage.getItem('supabaseUrl');
+    if (cachedUrl) {
+        supabaseUrl.value = cachedUrl;
+        return;
+    }
+
+    try {
+        const response = await axios.get('/apiv/_1/config/supabase-url');
+        supabaseUrl.value = response.data.url;
+        localStorage.setItem('supabaseUrl', response.data.url);
+    } catch (error) {
+        console.error('Failed to fetch Supabase URL:', error);
+    }
+};
+
+const blob_url = computed(() => {
+    const storedUrl = props.gallery.storage_url || '';
+
+    // If the URL starts with http or https, it's a complete URL (Vercel or full Supabase URL)
+    if (storedUrl.startsWith('http://') || storedUrl.startsWith('https://')) {
+        return storedUrl;
+    }
+
+    // If no Supabase URL is available yet, use a placeholder
+    if (!supabaseUrl.value) {
+        return 'https://placehold.co/400';
+    }
+
+    // If it's a relative path, prepend the Supabase URL
+    return `${supabaseUrl.value}/storage/v1${storedUrl.startsWith('/') ? '' : '/'}${storedUrl}`;
 });
 
 onMounted(() => {
     formData.value.title = props.gallery.title;
     formData.value.description = props.gallery.description || '';
-    formData.value.category_id = props.gallery.category_id || '';
+    // Load existing categories from the gallery object
+    formData.value.category_ids = props.gallery.categories
+        ? props.gallery.categories.map(cat => cat.id)
+        : [];
+
+    fetchSupabaseUrl();
 
     if (categoryStore.categories.length === 0) {
         categoryStore.fetchCategories();
@@ -86,19 +126,19 @@ onMounted(() => {
 
 const updateGallery = async () => {
   loading.value = true;
-  
+
   try {
-    await galleryStore.updateGallery(props.gallery.id, {
+    await imageStore.updateImage(props.gallery.id, {
       title: formData.value.title,
       description: formData.value.description,
-      category_id: formData.value.category_id
+      category_ids: formData.value.category_ids
     });
-    
-    alert('Gallery updated successfully!');
+
+    alert('Image updated successfully!');
     emit('update-complete');
     emit('close');
   } catch (error) {
-    alert('Failed to update gallery. Please try again.');
+    alert('Failed to update image. Please try again.');
   } finally {
     loading.value = false;
   }

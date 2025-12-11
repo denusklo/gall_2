@@ -1,26 +1,18 @@
-// resources/js/stores/gallery.js
+// resources/js/stores/gallery.js - NEW: For managing gallery albums
 import { defineStore } from 'pinia';
 import axios from 'axios';
 
 export const useGalleryStore = defineStore('gallery', {
   state: () => ({
     galleries: [],
+    currentGallery: null,
     loading: false,
     error: null,
-    uploadProgress: 0,
     pagination: {
       currentPage: 1,
       totalItems: 0,
       perPage: 12
-    },
-    stats: {
-      totalImages: 0,
-      totalStorage: 0,
-      recentUploads: 0,
-      fileTypes: [],
-      timeline: []
-    },
-    activeCategory: null
+    }
   }),
 
   actions: {
@@ -30,9 +22,7 @@ export const useGalleryStore = defineStore('gallery', {
         const params = {
           page,
           search: filters.search || '',
-          file_type: filters.fileType || '',
-          sort_by: filters.sortBy || 'newest',
-          category_id: filters.categoryId || this.activeCategory || ''
+          sort_by: filters.sortBy || 'newest'
         };
 
         const response = await axios.get('/apiv/_1/galleries', { params });
@@ -50,64 +40,95 @@ export const useGalleryStore = defineStore('gallery', {
       }
     },
 
-    // In your Vue/React component
-    async uploadFile(file, title, description = '', categoryId = null) {
+    async fetchGallery(id) {
       this.loading = true;
-      this.uploadProgress = 0;
-
       try {
-        // Create form data for the backend upload
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('title', title);
-        formData.append('description', description || '');
-        if (categoryId) formData.append('category_id', categoryId);
-
-        // Send to our backend endpoint (now handles the Supabase upload)
-        const response = await axios.post('/apiv/_1/galleries/upload', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          },
-          onUploadProgress: (progressEvent) => {
-            this.uploadProgress = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-          }
-        });
-
-        // Add the new gallery to the list
-        this.galleries.unshift(response.data);
+        const response = await axios.get(`/apiv/_1/galleries/${id}`);
+        this.currentGallery = response.data;
         this.error = null;
-        
         return response.data;
       } catch (error) {
-        console.error('Error uploading file:', error);
-        this.error = error.response?.data?.message || 'Failed to upload file';
+        this.error = error.response?.data?.message || 'Failed to fetch gallery';
+        console.error('Error fetching gallery:', error);
         throw error;
       } finally {
         this.loading = false;
-        this.uploadProgress = 0;
       }
     },
 
-    async deleteGallery(id) {
+    async createGallery(data) {
+      this.loading = true;
       try {
-        await axios.delete(`/apiv/_1/galleries/${id}`);
-        this.galleries = this.galleries.filter(gallery => gallery.id !== id);
+        console.log('[GalleryStore] Creating gallery with data:', data);
+        const response = await axios.post('/apiv/_1/galleries', {
+          title: data.title,
+          description: data.description,
+          cover_image_id: data.cover_image_id || null
+        });
+
+        console.log('[GalleryStore] Gallery created, response:', response.data);
+
+        let newGallery = {
+          ...response.data,
+          images_count: response.data.images_count || 0
+        };
+
+        // If image_ids were provided, add them to the gallery
+        if (data.image_ids && data.image_ids.length > 0) {
+          console.log('[GalleryStore] Adding images to gallery:', data.image_ids);
+
+          // Add images one by one (excluding cover image if already added by backend)
+          for (const imageId of data.image_ids) {
+            try {
+              await this.addImageToGallery(newGallery.id, imageId);
+            } catch (err) {
+              // If it's a duplicate error, ignore it (cover image was already added)
+              if (err.response?.status !== 409) {
+                throw err;
+              }
+              console.log('[GalleryStore] Image already in gallery (likely cover image):', imageId);
+            }
+          }
+
+          // Fetch the updated gallery with correct images_count
+          const updatedResponse = await axios.get(`/apiv/_1/galleries/${newGallery.id}`);
+          newGallery = {
+            ...updatedResponse.data,
+            images_count: updatedResponse.data.images?.length || data.image_ids.length
+          };
+        }
+
+        this.galleries.unshift(newGallery);
+        this.pagination.totalItems += 1;
+
+        console.log('[GalleryStore] Gallery added to list. Total galleries:', this.galleries.length);
+
         this.error = null;
+        return newGallery;
       } catch (error) {
-        this.error = error.response?.data?.message || 'Failed to delete gallery';
-        console.error('Error deleting gallery:', error);
+        this.error = error.response?.data?.message || 'Failed to create gallery';
+        console.error('[GalleryStore] Error creating gallery:', error);
+        throw error;
+      } finally {
+        this.loading = false;
       }
     },
 
     async updateGallery(id, data) {
       try {
-        const response = await axios.put(`/apiv/_1/galleries/${id}`, data);
-        const index = this.galleries.findIndex(gallery => gallery.id === id);
+        const response = await axios.put(`/apiv/_1/galleries/${id}`, {
+          title: data.title,
+          description: data.description,
+          cover_image_id: data.cover_image_id
+        });
 
+        const index = this.galleries.findIndex(g => g.id === id);
         if (index !== -1) {
           this.galleries[index] = { ...this.galleries[index], ...response.data };
+        }
+
+        if (this.currentGallery && this.currentGallery.id === id) {
+          this.currentGallery = { ...this.currentGallery, ...response.data };
         }
 
         this.error = null;
@@ -119,19 +140,98 @@ export const useGalleryStore = defineStore('gallery', {
       }
     },
 
-    async fetchStats() {
+    async deleteGallery(id) {
       try {
-        const response = await axios.get('/apiv/_1/galleries/stats');
-        this.stats = response.data;
+        await axios.delete(`/apiv/_1/galleries/${id}`);
+        this.galleries = this.galleries.filter(g => g.id !== id);
+
+        if (this.currentGallery && this.currentGallery.id === id) {
+          this.currentGallery = null;
+        }
+
         this.error = null;
       } catch (error) {
-        console.error('Error fetching gallery stats:', error);
-        // Don't set error state to avoid disrupting UI if stats fetch fails
+        this.error = error.response?.data?.message || 'Failed to delete gallery';
+        console.error('Error deleting gallery:', error);
+        throw error;
       }
     },
 
-    setActiveCategory(categoryId) {
-      this.activeCategory = categoryId;
+    async addImageToGallery(galleryId, imageId) {
+      try {
+        const response = await axios.post(`/apiv/_1/galleries/${galleryId}/images/${imageId}`);
+
+        if (this.currentGallery && this.currentGallery.id === galleryId) {
+          this.currentGallery = response.data.gallery;
+        }
+
+        this.error = null;
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to add image to gallery';
+        console.error('Error adding image to gallery:', error);
+        throw error;
+      }
+    },
+
+    async removeImageFromGallery(galleryId, imageId) {
+      try {
+        const response = await axios.delete(`/apiv/_1/galleries/${galleryId}/images/${imageId}`);
+
+        if (this.currentGallery && this.currentGallery.id === galleryId) {
+          this.currentGallery = response.data.gallery;
+        }
+
+        this.error = null;
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to remove image from gallery';
+        console.error('Error removing image from gallery:', error);
+        throw error;
+      }
+    },
+
+    async setCoverImage(galleryId, imageId) {
+      try {
+        const response = await axios.put(`/apiv/_1/galleries/${galleryId}/cover`, {
+          image_id: imageId
+        });
+
+        const index = this.galleries.findIndex(g => g.id === galleryId);
+        if (index !== -1) {
+          this.galleries[index] = response.data.gallery;
+        }
+
+        if (this.currentGallery && this.currentGallery.id === galleryId) {
+          this.currentGallery = response.data.gallery;
+        }
+
+        this.error = null;
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to set cover image';
+        console.error('Error setting cover image:', error);
+        throw error;
+      }
+    },
+
+    async reorderImages(galleryId, imageIds) {
+      try {
+        const response = await axios.put(`/apiv/_1/galleries/${galleryId}/images/reorder`, {
+          image_ids: imageIds
+        });
+
+        if (this.currentGallery && this.currentGallery.id === galleryId) {
+          this.currentGallery = response.data.gallery;
+        }
+
+        this.error = null;
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to reorder images';
+        console.error('Error reordering images:', error);
+        throw error;
+      }
     }
   }
 });

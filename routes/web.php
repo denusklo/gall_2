@@ -32,7 +32,19 @@ Auth::routes();
 Route::get('/home', [App\Http\Controllers\AuthDispatchController::class, 'dispatchHome'])->name('home');
 
 Route::middleware(['auth'])->group(function () {
-    Route::get('/galleries', [App\Http\Controllers\GalleryController::class, 'index'])->name('galleries.index');
+    // Images route - displays individual images (what used to be called "galleries")
+    Route::get('/images', [App\Http\Controllers\GalleryController::class, 'index'])->name('images.index');
+
+    // Galleries route - displays albums/collections
+    Route::get('/galleries/albums', [App\Http\Controllers\GalleryController::class, 'albums'])->name('galleries.albums');
+
+    // Gallery detail page - shows images in a specific gallery
+    Route::get('/galleries/{id}', [App\Http\Controllers\GalleryController::class, 'show'])->name('galleries.show');
+
+    // Redirect main galleries route to albums
+    Route::get('/galleries', function() {
+        return redirect()->route('galleries.albums');
+    })->name('galleries.index');
 });
 
 Route::middleware('auth')->get('/apiv/_1/token', function (Request $request) {

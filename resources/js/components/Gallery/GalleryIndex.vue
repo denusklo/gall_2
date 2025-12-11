@@ -1,6 +1,6 @@
 <template>
     <div class="gallery-container">
-        <h1>My Gallery</h1>
+        <h1>My Images</h1>
 
         <div class="controls">
             <button @click="showUploadModal = true" class="btn btn-primary">
@@ -13,8 +13,8 @@
 
         <gallery-filters ref="filtersRef" @update-filters="applyFilters" />
 
-        <gallery-stats v-if="!galleryStore.loading && !galleryStore.error && hasGalleries"
-            :stats="galleryStore.stats" />
+        <gallery-stats v-if="!imageStore.loading && !imageStore.error && hasImages"
+            :stats="imageStore.stats" />
 
         <div class="main-content">
             <aside class="sidebar">
@@ -22,17 +22,17 @@
             </aside>
 
             <main class="content">
-                <div v-if="galleryStore.loading && !hasGalleries" class="loading">
+                <div v-if="imageStore.loading && !hasImages" class="loading">
                     <div class="spinner"></div>
-                    <p>Loading galleries...</p>
+                    <p>Loading images...</p>
                 </div>
 
-                <div v-else-if="galleryStore.error" class="error">
-                    <p>{{ galleryStore.error }}</p>
+                <div v-else-if="imageStore.error" class="error">
+                    <p>{{ imageStore.error }}</p>
                     <button @click="refreshGallery" class="btn btn-primary">Try Again</button>
                 </div>
 
-                <div v-else-if="!hasGalleries" class="empty">
+                <div v-else-if="!hasImages" class="empty">
                     <div v-if="hasActiveFilters || currentFilters.categoryId">
                         <p>No images match your current filters or category selection.</p>
                         <button @click="clearFilters" class="btn btn-primary">Clear Filters</button>
@@ -47,12 +47,12 @@
 
                 <div v-else>
                     <div class="gallery-grid">
-                        <gallery-item v-for="gallery in galleryStore.galleries" :key="gallery.id" :gallery="gallery"
-                            @edit="editGallery" @delete="deleteGallery" />
+                        <gallery-item v-for="image in imageStore.images" :key="image.id" :gallery="image"
+                            @edit="editImage" @delete="deleteImage" @add-to-gallery="addToGallery" />
                     </div>
 
-                    <gallery-pagination :current-page="galleryStore.pagination.currentPage"
-                        :total-items="galleryStore.pagination.totalItems" :per-page="galleryStore.pagination.perPage"
+                    <gallery-pagination :current-page="imageStore.pagination.currentPage"
+                        :total-items="imageStore.pagination.totalItems" :per-page="imageStore.pagination.perPage"
                         @page-change="changePage" />
                 </div>
             </main>
@@ -63,11 +63,18 @@
         <bulk-upload-modal v-if="showBulkUploadModal" @close="showBulkUploadModal = false"
             @upload-complete="refreshGallery" />
 
-        <edit-modal v-if="galleryToEdit" :gallery="galleryToEdit" @close="galleryToEdit = null"
+        <edit-modal v-if="imageToEdit" :gallery="imageToEdit" @close="imageToEdit = null"
             @update-complete="refreshGallery" />
+
+        <add-to-gallery-modal
+            v-if="imageToAddToGallery"
+            :image="imageToAddToGallery"
+            @close="imageToAddToGallery = null"
+            @image-added="onImageAddedToGallery"
+        />
     </div>
     <!-- resources/js/components/Gallery/GalleryIndex.vue - Add at the end before the closing div -->
-    <loading-overlay :show="galleryStore.loading && !hasGalleries" message="Loading galleries..." />
+    <loading-overlay :show="imageStore.loading && !hasImages" message="Loading images..." />
     <!-- resources/js/components/Gallery/GalleryIndex.vue - Add before the closing div -->
     <confirm-dialog :show="showDeleteConfirm" title="Delete Image"
         message="Are you sure you want to delete this image? This action cannot be undone." confirm-text="Delete"
@@ -76,7 +83,8 @@
 
 <script setup>
 import { onMounted, ref, computed } from 'vue';
-import { useGalleryStore } from '../../stores/gallery';
+import { useImageStore } from '../../stores/image';
+import { useCategoryStore } from '../../stores/category';
 import GalleryItem from './GalleryItem.vue';
 import UploadModal from './UploadModal.vue';
 import EditModal from './EditModal.vue';
@@ -88,17 +96,20 @@ import BulkUploadModal from './BulkUploadModal.vue';
 import CategorySelector from './CategorySelector.vue';
 import LoadingOverlay from './LoadingOverlay.vue';
 import ConfirmDialog from './ConfirmDialog.vue';
+import AddToGalleryModal from './AddToGalleryModal.vue';
 
-const galleryStore = useGalleryStore();
+const imageStore = useImageStore();
+const categoryStore = useCategoryStore();
 const showUploadModal = ref(false);
-const galleryToEdit = ref(null);
+const imageToEdit = ref(null);
 const currentFilters = ref({});
 const filtersRef = ref(null);
 const showBulkUploadModal = ref(false);
 const showDeleteConfirm = ref(false);
-const galleryToDelete = ref(null);
+const imageToDelete = ref(null);
+const imageToAddToGallery = ref(null);
 
-const hasGalleries = computed(() => galleryStore.galleries.length > 0);
+const hasImages = computed(() => imageStore.images.length > 0);
 const hasActiveFilters = computed(() => {
     return currentFilters.value.search ||
         currentFilters.value.fileType ||
@@ -107,22 +118,21 @@ const hasActiveFilters = computed(() => {
 
 onMounted(() => {
     // Initial fetch without filters
-    galleryStore.fetchGalleries();
-    galleryStore.fetchGalleries();
-    galleryStore.fetchStats();
+    imageStore.fetchImages();
+    imageStore.fetchStats();
 });
 
-const editGallery = (gallery) => {
-    galleryToEdit.value = gallery;
+const editImage = (image) => {
+    imageToEdit.value = image;
 };
 
-const deleteGallery = async (id) => {
+const deleteImage = async (id) => {
     if (confirm('Are you sure you want to delete this image?')) {
-        await galleryStore.deleteGallery(id);
+        await imageStore.deleteImage(id);
 
         // If we deleted the last item on the current page, go to previous page
-        if (galleryStore.galleries.length === 0 && galleryStore.pagination.currentPage > 1) {
-            changePage(galleryStore.pagination.currentPage - 1);
+        if (imageStore.images.length === 0 && imageStore.pagination.currentPage > 1) {
+            changePage(imageStore.pagination.currentPage - 1);
         } else {
             refreshGallery();
         }
@@ -130,7 +140,7 @@ const deleteGallery = async (id) => {
 };
 
 const changePage = (page) => {
-    galleryStore.fetchGalleries(page, currentFilters.value);
+    imageStore.fetchImages(page, currentFilters.value);
     // Scroll to top of gallery
     window.scrollTo({
         top: document.querySelector('.gallery-container').offsetTop,
@@ -140,7 +150,7 @@ const changePage = (page) => {
 
 const applyFilters = (filters) => {
     currentFilters.value = { ...filters };
-    galleryStore.fetchGalleries(1, currentFilters.value); // Reset to first page when filters change
+    imageStore.fetchImages(1, currentFilters.value); // Reset to first page when filters change
 };
 
 const clearFilters = () => {
@@ -150,37 +160,54 @@ const clearFilters = () => {
 };
 
 const refreshGallery = () => {
-    galleryStore.fetchGalleries(
-        galleryStore.pagination.currentPage,
+    imageStore.fetchImages(
+        imageStore.pagination.currentPage,
         currentFilters.value
     );
-    galleryStore.fetchStats();
+    imageStore.fetchStats();
+    categoryStore.fetchCategories();
 };
 
 const onCategoryChanged = (categoryId) => {
     currentFilters.value.categoryId = categoryId;
-    galleryStore.fetchGalleries(1, currentFilters.value);
+    imageStore.fetchImages(1, currentFilters.value);
 };
 
 const confirmDelete = async () => {
-    if (galleryToDelete.value) {
-        await galleryStore.deleteGallery(galleryToDelete.value);
+    if (imageToDelete.value) {
+        await imageStore.deleteImage(imageToDelete.value);
 
         // If we deleted the last item on the current page, go to previous page
-        if (galleryStore.galleries.length === 0 && galleryStore.pagination.currentPage > 1) {
-            changePage(galleryStore.pagination.currentPage - 1);
+        if (imageStore.images.length === 0 && imageStore.pagination.currentPage > 1) {
+            changePage(imageStore.pagination.currentPage - 1);
         } else {
             refreshGallery();
         }
 
         showDeleteConfirm.value = false;
-        galleryToDelete.value = null;
+        imageToDelete.value = null;
     }
 };
 
 const cancelDelete = () => {
     showDeleteConfirm.value = false;
-    galleryToDelete.value = null;
+    imageToDelete.value = null;
+};
+
+const addToGallery = (image) => {
+    console.log('[GalleryIndex] Opening add to gallery modal for image:', image.title);
+    imageToAddToGallery.value = image;
+};
+
+const onImageAddedToGallery = () => {
+    console.log('[GalleryIndex] Image added to gallery successfully');
+    imageToAddToGallery.value = null;
+    // Refresh images to update the galleries relationship
+    // This will recalculate the isInAllGalleries computed property
+    imageStore.fetchImages(
+        imageStore.pagination.currentPage,
+        currentFilters.value
+    );
 };
 
 </script>
