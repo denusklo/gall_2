@@ -24,6 +24,6 @@ class AuthDispatchController extends Controller
         }
         
         // No authentication found, redirect to login
-        return redirect()->route('login');
+        return redirect()->route('user.login.form');
     }
 }
