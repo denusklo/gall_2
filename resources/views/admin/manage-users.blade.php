@@ -8,18 +8,6 @@
                 <div class="card-header">Manage Users</div>
 
                 <div class="card-body">
-                    @if (session('success'))
-                        <div class="alert alert-success" role="alert">
-                            {{ session('success') }}
-                        </div>
-                    @endif
-                    
-                    @if (session('error'))
-                        <div class="alert alert-danger" role="alert">
-                            {{ session('error') }}
-                        </div>
-                    @endif
-
                     <table class="table table-bordered">
                         <thead>
                             <tr>
@@ -65,4 +53,26 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('scripts')
+<script>
+    @if(session('success'))
+        iziToast.success({
+            title: 'Success',
+            message: '{{ session('success') }}',
+            position: 'topRight',
+            timeout: 3000
+        });
+    @endif
+
+    @if(session('error'))
+        iziToast.error({
+            title: 'Error',
+            message: '{{ session('error') }}',
+            position: 'topRight',
+            timeout: 3000
+        });
+    @endif
+</script>
 @endsection

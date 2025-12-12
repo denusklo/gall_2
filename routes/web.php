@@ -81,7 +81,7 @@ Route::middleware( ['firebase.auth'] )->group(function() {
         ->middleware('firebase.admin')
         ->name('users');
 
-    Route::get('user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
+    Route::match(['get', 'post'], 'user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
     Route::put('user/update', [FirebaseUserController::class, 'update'])->name('user.update');
     Route::any('user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
     Route::get('firebase', [FirebaseController::class, 'index']);
