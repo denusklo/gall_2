@@ -52,6 +52,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         app.use(pinia);
         app.mount('#gallery-detail-app');
 
+        // Reinitialize Bootstrap dropdowns after Vue app mounts
+        if (window.initializeBootstrapDropdowns) {
+            window.initializeBootstrapDropdowns();
+        }
+
         console.log('[galleryDetailApp] App mounted');
 
         // Add global error handler for Axios

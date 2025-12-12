@@ -25,7 +25,7 @@
 
 <script setup>
 import { computed } from 'vue';
-import { BarChart, PieChart } from 'vue-chartjs';
+import { Bar as BarChart, Pie as PieChart } from 'vue-chartjs';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import GalleryStats from './GalleryStats.vue';
 

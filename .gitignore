@@ -54,3 +54,5 @@ Thumbs.db
 # Markdown files
 *.md
 !README.md
+
+/.claude/*
