@@ -4,7 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use App\Http\Controllers\FirebaseAdminController;
+use App\Http\Controllers\Firebase\FirebaseAdminController;
 
 class FirebaseAdminMiddleware
 {
@@ -18,11 +18,11 @@ class FirebaseAdminMiddleware
     public function handle(Request $request, Closure $next)
     {
         $adminController = new FirebaseAdminController();
-        
+
         if (!$adminController->isCurrentUserAdmin()) {
-            return redirect()->route('user.home')->with('error', 'Access denied: Admin privileges required.');
+            return redirect()->route('home')->with('error', 'Access denied: Admin privileges required.');
         }
-        
+
         return $next($request);
     }
 }

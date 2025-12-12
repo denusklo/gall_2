@@ -28,8 +28,8 @@
                                     <td>{{$user->phoneNumber}}</td>
                                     <td>{{$user->email}}</td>
                                     <td>
-                                        <form action="{{route('user.edit')}}" method="get">
-                                            {{ csrf_field() }}
+                                        <form action="{{route('user.edit')}}" method="POST">
+                                            @csrf
                                             <input type="hidden" name='uid' value="{{$user->uid}}">
                                             <button type="submit" class="btn btn-primary btn-sm">Edit</button>
                                         </form>

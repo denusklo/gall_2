@@ -74,14 +74,14 @@ Route::prefix('firebase')->as('firebase.')->group(function () {
 Route::middleware( ['firebase.auth'] )->group(function() {    
     
     // Route::get('home', [App\Http\Controllers\RequestController::class, 'index'])->name('home');
-    Route::resource('request', RequestController::class);
+    Route::resource('my', RequestController::class)->names('request');
     Route::resource('requests', RequestsController::class);
 
     Route::get('users', [FirebaseUserController::class, 'index'])
         ->middleware('firebase.admin')
         ->name('users');
 
-    Route::get('user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
+    Route::match(['get', 'post'], 'user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
     Route::put('user/update', [FirebaseUserController::class, 'update'])->name('user.update');
     Route::any('user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
     Route::get('firebase', [FirebaseController::class, 'index']);

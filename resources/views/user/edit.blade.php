@@ -6,15 +6,6 @@
 <div class="container">
     <div class="row justify-content-center">
         <div class="col-md-8">
-            @if (session()->get('error'))
-                <h5 class='alert alert-warning'>
-                    {{session()->get('error')}}
-                </h5>
-            @elseif (session()->get('success'))
-                <h5 class='alert alert-success'>
-                    {{session()->get('success')}}
-                </h5>
-            @endif
             <div class="card">
                 <div class="card-header">{{ __('Edit and Update User Data') }}</div>
 
@@ -66,4 +57,26 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('scripts')
+<script>
+    @if(session('success'))
+        iziToast.success({
+            title: 'Success',
+            message: '{{ session('success') }}',
+            position: 'topRight',
+            timeout: 3000
+        });
+    @endif
+
+    @if(session('error'))
+        iziToast.error({
+            title: 'Error',
+            message: '{{ session('error') }}',
+            position: 'topRight',
+            timeout: 3000
+        });
+    @endif
+</script>
 @endsection

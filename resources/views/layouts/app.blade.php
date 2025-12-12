@@ -153,8 +153,9 @@
         </main>
     </div>
 
-    {{-- Use mix() helper for both HMR and production builds --}}
-    {{-- <script src="{{ mix('js/app.js') }}" defer></script> --}}
+    {{-- Bootstrap Bundle (jQuery, Popper.js, Bootstrap, iziToast) --}}
+    <script src="{{ mix('js/bootstrap-bundle.js') }}"></script>
+
     @yield('scripts')
 </body>
 

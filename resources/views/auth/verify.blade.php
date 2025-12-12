@@ -8,12 +8,6 @@
                 <div class="card-header">{{ __('Verify Your Email Address') }}</div>
 
                 <div class="card-body">
-                    @if (session('resent'))
-                        <div class="alert alert-success" role="alert">
-                            {{ __('A fresh verification link has been sent to your email address.') }}
-                        </div>
-                    @endif
-
                     {{ __('Before proceeding, please check your email for a verification link.') }}
                     {{ __('If you did not receive the email') }},
                     <form class="d-inline" method="POST" action="{{ route('verification.resend') }}">
@@ -25,4 +19,17 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('scripts')
+<script>
+    @if(session('resent'))
+        iziToast.success({
+            title: 'Success',
+            message: '{{ __("A fresh verification link has been sent to your email address.") }}',
+            position: 'topRight',
+            timeout: 3000
+        });
+    @endif
+</script>
 @endsection

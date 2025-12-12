@@ -76,7 +76,7 @@ class RequestController extends Controller
 
         $database->getReference('Requests/' . session()->get('verified_user_id'))->push($data);
 
-        return redirect()->route('user.home');
+        return redirect()->route('request.index')->with('success', 'Request created successfully!');
     }
 
 
@@ -134,7 +134,7 @@ class RequestController extends Controller
 
         $database->getReference()->update($updates);
 
-        return redirect()->route('user.home');
+        return redirect()->route('request.index')->with('success', 'Request updated successfully!');
     }
 
     /**
@@ -151,6 +151,6 @@ class RequestController extends Controller
         $ref = "Requests/" . session()->get('verified_user_id') . '/' . $id;
         $database->getReference($ref)->remove();
 
-        return redirect()->route('user.home');
+        return redirect()->route('request.index')->with('success', 'Request deleted successfully!');
     }
 }
