@@ -71,11 +71,23 @@ Route::prefix('firebase')->as('firebase.')->group(function () {
     Route::get('/logout', [FirebaseAuthController::class, 'logout'])->name('logout');
 });
 
-Route::middleware( ['firebase.auth'] )->group(function() {    
-    
+Route::middleware( ['firebase.auth'] )->group(function() {
+
     // Route::get('home', [App\Http\Controllers\RequestController::class, 'index'])->name('home');
     Route::resource('my', RequestController::class)->names('request');
     Route::resource('requests', RequestsController::class);
+
+    // Request completion routes
+    Route::post('/requests/{user_id}/{request_id}/complete', [RequestsController::class, 'complete'])
+        ->name('requests.complete')
+        ->middleware('volunteer');
+
+    Route::get('/requests/completed', [RequestsController::class, 'showCompleted'])
+        ->name('requests.completed')
+        ->middleware('volunteer');
+
+    Route::get('/requests/pending', [RequestsController::class, 'pending'])
+        ->name('requests.pending');
 
     Route::get('users', [FirebaseUserController::class, 'index'])
         ->middleware('firebase.admin')
