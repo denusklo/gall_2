@@ -6,6 +6,7 @@ mix.js('resources/js/galleryApp.js', 'public/js')
    .js('resources/js/galleriesApp.js', 'public/js')
    .js('resources/js/galleryDetailApp.js', 'public/js')
    .js('resources/js/bootstrap-bundle.js', 'public/js')
+   .js('resources/js/fcm.js', 'public/js')
    .vue()
    .sass('resources/sass/app.scss', 'public/css');
 

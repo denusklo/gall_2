@@ -61,6 +61,45 @@
 
 @section('scripts')
 <script>
+    $(document).ready(function() {
+        // Phone number validation on input
+        $('#phone').on('input', function() {
+            let phone = $(this).val();
+            // Only allow + followed by digits
+            let cleaned = phone.replace(/[^\d+]/g, '');
+            // Ensure + is only at the beginning
+            if (cleaned.indexOf('+') > 0) {
+                cleaned = cleaned.replace(/\+/g, '');
+                cleaned = '+' + cleaned;
+            }
+            if (cleaned !== phone) {
+                $(this).val(cleaned);
+                iziToast.warning({
+                    title: 'Invalid Format',
+                    message: 'Phone number must be in E.164 format: + followed by digits only (e.g., +1234567890)',
+                    position: 'topRight',
+                    timeout: 3000
+                });
+            }
+        });
+
+        // Form validation before submit
+        $('form').on('submit', function(e) {
+            let phone = $('#phone').val();
+            if (phone && !/^\+[1-9]\d{1,14}$/.test(phone)) {
+                e.preventDefault();
+                iziToast.error({
+                    title: 'Invalid Phone Number',
+                    message: 'Phone number must be in E.164 format: + followed by 1-15 digits (e.g., +1234567890)',
+                    position: 'topRight',
+                    timeout: 5000
+                });
+                return false;
+            }
+        });
+    });
+
+    // Show toast notifications based on flash messages
     @if(session('success'))
         iziToast.success({
             title: 'Success',

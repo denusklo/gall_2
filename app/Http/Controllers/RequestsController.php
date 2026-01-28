@@ -16,91 +16,116 @@ class RequestsController extends Controller
 
     /**
      * Display a listing of the resource.
+     * Redirects to my requests by default.
      *
      * @return \Illuminate\Http\Response
      */
     public function index()
     {
+        return redirect()->route('requests.my');
+    }
+
+    /**
+     * Display user's own requests.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function myRequests()
+    {
         $uid = session()->get('verified_user_id');
         $database = $this->database;
-        
-        // Check if user is admin using Firebase Auth SDK
-        $isAdmin = false;
-        
-        try {
-            $auth = app('firebase.auth');
-            $user = $auth->getUser($uid);
-            $customClaims = $user->customClaims ?? [];
-            $isAdmin = isset($customClaims['admin']) && $customClaims['admin'] === true;
-        } catch (\Exception $e) {
-            // Handle error or log it
-            // If getting user fails, default to non-admin
-        }
-        
-        if ($isAdmin) {
-            // Admin view logic - see all requests
-            $allUsersData = $database->getReference('Requests/')->getValue();
-            
-            // Initialize array to hold all requests
+        $data = $database->getReference('Requests/' . $uid)->getValue();
+
+        // If $data is null, initialize as empty array
+        if ($data === null) {
             $data = [];
-            
-            // Iterate through each user's requests
-            if ($allUsersData) {
-                foreach ($allUsersData as $userId => $userRequests) {
-                    if ($userRequests) {
-                        foreach ($userRequests as $requestId => $requestData) {
-                            // Add user ID and request ID to the data for reference
+        } else {
+            // Reformat to match the format of the admin view
+            $formattedData = [];
+            foreach ($data as $requestId => $requestData) {
+                $requestData['user_id'] = $uid;
+                $requestData['request_id'] = $requestId;
+                // Ensure created_by is set
+                if (!isset($requestData['created_by'])) {
+                    $requestData['created_by'] = $uid;
+                }
+                $formattedData[] = $requestData;
+            }
+            $data = $formattedData;
+        }
+
+        // Paginate the data
+        $perPage = 10;
+        $currentPage = request()->get('page', 1);
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            array_slice($data, ($currentPage - 1) * $perPage, $perPage),
+            count($data),
+            $perPage,
+            $currentPage,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
+
+        return view('requests.index', [
+            'data' => $paginator,
+            'view' => 'my'
+        ]);
+    }
+
+    /**
+     * Display all pending requests (not created by current user).
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function allRequests()
+    {
+        $uid = session()->get('verified_user_id');
+        $database = $this->database;
+
+        // Get all requests
+        $allUsersData = $database->getReference('Requests/')->getValue();
+
+        // Initialize array to hold all pending requests
+        $pendingRequests = [];
+
+        // Iterate through each user's requests
+        if ($allUsersData) {
+            foreach ($allUsersData as $userId => $userRequests) {
+                if ($userRequests) {
+                    foreach ($userRequests as $requestId => $requestData) {
+                        // Only include pending requests not created by current user
+                        $isCompleted = isset($requestData['status']) && $requestData['status'] === 'completed';
+                        $isMyRequest = isset($requestData['created_by']) && $requestData['created_by'] === $uid;
+                        $isLegacyRequest = !isset($requestData['created_by']) && $userId === $uid;
+
+                        if (!$isCompleted && !$isMyRequest && !$isLegacyRequest) {
                             $requestData['user_id'] = $userId;
                             $requestData['request_id'] = $requestId;
-                            $data[] = $requestData;
+                            // Ensure created_by is set
+                            if (!isset($requestData['created_by'])) {
+                                $requestData['created_by'] = $userId;
+                            }
+                            $pendingRequests[] = $requestData;
                         }
                     }
                 }
             }
-            
-            // Paginate the data
-            $perPage = 10;
-            $currentPage = request()->get('page', 1);
-            $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
-                array_slice($data, ($currentPage - 1) * $perPage, $perPage),
-                count($data),
-                $perPage,
-                $currentPage,
-                ['path' => request()->url(), 'query' => request()->query()]
-            );
-
-            return view('requests.index', ['data' => $paginator]);
-        } else {
-            // Regular user view logic - see only their requests
-            $data = $database->getReference('Requests/' . $uid)->getValue();
-
-            // If $data is null, initialize as empty array
-            if ($data === null) {
-                $data = [];
-            } else {
-                // Reformat to match the format of the admin view
-                $formattedData = [];
-                foreach ($data as $requestId => $requestData) {
-                    $requestData['user_id'] = $uid;
-                    $requestData['request_id'] = $requestId;
-                    $formattedData[] = $requestData;
-                }
-                $data = $formattedData;
-            }
-
-            // Paginate the data
-            $perPage = 10;
-            $currentPage = request()->get('page', 1);
-            $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
-                array_slice($data, ($currentPage - 1) * $perPage, $perPage),
-                count($data),
-                $perPage,
-                $currentPage,
-                ['path' => request()->url(), 'query' => request()->query()]
-            );
-
-            return view('requests.index', ['data' => $paginator]);
         }
+
+        // Paginate the data
+        $perPage = 10;
+        $currentPage = request()->get('page', 1);
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            array_slice($pendingRequests, ($currentPage - 1) * $perPage, $perPage),
+            count($pendingRequests),
+            $perPage,
+            $currentPage,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
+
+        return view('requests.index', [
+            'data' => $paginator,
+            'view' => 'all'
+        ]);
     }
     /**
      * Show the form for creating a new resource.
@@ -128,7 +153,9 @@ class RequestsController extends Controller
             'phone_no' => 'required',
             'email' => 'required',
             'location' => 'required',
-            'description' => 'required'
+            'description' => 'required',
+            'allow_multiple_completers' => 'boolean',
+            'required_completers' => 'nullable|integer|min:1|max:50'
         ]);
 
         $name = $request->name;
@@ -137,6 +164,8 @@ class RequestsController extends Controller
         $email = $request->email;
         $location = $request->location;
         $description = $request->description;
+        $allowMultiple = $request->boolean('allow_multiple_completers', false);
+        $requiredCompleters = $allowMultiple ? ($request->required_completers ?? 1) : 1;
 
         $data = [
             'name' => $name,
@@ -144,12 +173,17 @@ class RequestsController extends Controller
             'phone_no' => $phone_no,
             'email' => $email,
             'location' => $location,
-            'description' => $description
+            'description' => $description,
+            'created_by' => session()->get('verified_user_id'),
+            'allow_multiple_completers' => $allowMultiple,
+            'required_completers' => $requiredCompleters,
+            'completers' => [],
+            'status' => 'pending'
         ];
 
         $database->getReference('Requests/' . session()->get('verified_user_id'))->push($data);
 
-        return redirect()->route('requests.index')->with('success', 'Request created successfully!');
+        return redirect()->route('requests.my')->with('success', 'Request created successfully!');
     }
 
 
@@ -274,41 +308,128 @@ class RequestsController extends Controller
             $requestData = $database->getReference($ref)->getValue();
 
             if (!$requestData) {
-                return redirect()->route('requests.index')
+                return redirect()->route('requests.all')
                     ->with('error', 'Request not found.');
             }
 
-            // Check if already completed
-            if (isset($requestData['status']) && $requestData['status'] === 'completed') {
-                return redirect()->route('requests.index')
-                    ->with('warning', 'Request is already completed.');
+            // Check if this is own request
+            $createdBy = $requestData['created_by'] ?? $userId;
+            if ($createdBy === $currentUserId) {
+                return redirect()->route('requests.all')
+                    ->with('warning', 'You cannot complete your own request.');
             }
 
-            // Get current user's info for completion tracking
+            // Get current user's info
             $auth = app('firebase.auth');
             $currentUser = $auth->getUser($currentUserId);
 
-            // Prepare completion data
-            $completionData = [
-                'status' => 'completed',
-                'completion_data' => [
-                    'completed_by_uid' => $currentUserId,
-                    'completed_by_name' => $currentUser->displayName ?? 'Unknown',
-                    'completed_at' => now()->toISOString(),
-                    'completion_notes' => $request->completion_notes
-                ]
+            // Initialize completers array if not exists
+            $completers = $requestData['completers'] ?? [];
+            $allowMultiple = $requestData['allow_multiple_completers'] ?? false;
+            $requiredCompleters = $requestData['required_completers'] ?? 1;
+
+            // Check if already completed by this user
+            if (in_array($currentUserId, $completers)) {
+                return redirect()->route('requests.all')
+                    ->with('warning', 'You have already completed this request.');
+            }
+
+            // Add current user to completers
+            $completers[] = $currentUserId;
+
+            // Prepare completion entry
+            $completionEntry = [
+                'uid' => $currentUserId,
+                'name' => $currentUser->displayName ?? 'Unknown',
+                'completed_at' => now()->toISOString(),
+                'notes' => $request->completion_notes
             ];
 
-            // Update the request with completion data
-            $database->getReference($ref)->update($completionData);
+            // Check if request is now fully completed
+            $isFullyCompleted = count($completers) >= $requiredCompleters;
+
+            // Prepare update data
+            $updateData = [
+                'completers' => $completers
+            ];
+
+            // Update completion_data based on multi-completer setting
+            if ($allowMultiple) {
+                // For multi-completer, store array of completions
+                $existingCompletions = $requestData['completion_data'] ?? [];
+                if (!is_array($existingCompletions)) {
+                    $existingCompletions = [];
+                }
+                $existingCompletions[] = $completionEntry;
+                $updateData['completion_data'] = $existingCompletions;
+            } else {
+                // For single completer, store single completion data
+                $updateData['completion_data'] = $completionEntry;
+            }
+
+            // Only mark as completed if required number is reached
+            if ($isFullyCompleted) {
+                $updateData['status'] = 'completed';
+            }
+
+            // Update the request
+            $database->getReference($ref)->update($updateData);
 
             $requestName = $requestData['name'] ?? 'Request';
+            $completerName = $currentUser->displayName ?? 'Someone';
 
-            return redirect()->route('requests.index')
-                ->with('success', "Request '{$requestName}' has been marked as completed!");
+            // Send FCM Notifications
+            $fcmNotification = app(\App\Services\FcmNotificationService::class);
+            $fcmTokenService = app(\App\Services\FcmTokenService::class);
+
+            // Get creator's FCM token
+            $creatorToken = $fcmTokenService->getPrimaryToken($createdBy);
+
+            // Get completer's FCM token
+            $completerToken = $fcmTokenService->getPrimaryToken($currentUserId);
+
+            if ($isFullyCompleted) {
+                // Request fully completed
+                if ($allowMultiple) {
+                    // Multi-completer fully completed
+                    if ($creatorToken) {
+                        $fcmNotification->notifyFullyCompleted($creatorToken, $requestName, count($completers));
+                    }
+                } else {
+                    // Single completer completed
+                    if ($creatorToken) {
+                        $fcmNotification->notifyRequestCompleted($creatorToken, $requestName, $completerName);
+                    }
+                }
+
+                // Notify completer of full completion
+                if ($completerToken) {
+                    $fcmNotification->notifyCompletionConfirmation($completerToken, $requestName, count($completers), $requiredCompleters);
+                }
+
+                return redirect()->route('requests.all')
+                    ->with('success', "Request '{$requestName}' has been fully completed! ({$requiredCompleters}/{$requiredCompleters})");
+            } else {
+                // Partial completion (multi-completer)
+                $remaining = $requiredCompleters - count($completers);
+                $completedCount = count($completers);
+
+                // Notify creator of new completion
+                if ($creatorToken && $allowMultiple) {
+                    $fcmNotification->notifyNewCompletion($creatorToken, $requestName, $completedCount, $requiredCompleters, $completerName);
+                }
+
+                // Notify completer
+                if ($completerToken) {
+                    $fcmNotification->notifyCompletionConfirmation($completerToken, $requestName, $completedCount, $requiredCompleters);
+                }
+
+                return redirect()->route('requests.all')
+                    ->with('success', "You've completed '{$requestName}'! ({$completedCount}/{$requiredCompleters} completed, {$remaining} more needed)");
+            }
 
         } catch (\Exception $e) {
-            return redirect()->route('requests.index')
+            return redirect()->route('requests.all')
                 ->with('error', 'Failed to complete request: ' . $e->getMessage());
         }
     }
@@ -323,25 +444,6 @@ class RequestsController extends Controller
         $uid = session()->get('verified_user_id');
         $database = $this->database;
 
-        // Check if user is admin or volunteer
-        $isAdmin = false;
-        $isVolunteer = false;
-
-        try {
-            $auth = app('firebase.auth');
-            $user = $auth->getUser($uid);
-            $customClaims = $user->customClaims ?? [];
-            $isAdmin = isset($customClaims['admin']) && $customClaims['admin'] === true;
-            $isVolunteer = isset($customClaims['volunteer']) && $customClaims['volunteer'] === true;
-        } catch (\Exception $e) {
-            // Handle error or log it
-        }
-
-        if (!$isAdmin && !$isVolunteer) {
-            return redirect()->route('user.home')
-                ->with('error', 'You do not have permission to view completed requests.');
-        }
-
         // Get all completed requests
         $allUsersData = $database->getReference('Requests/')->getValue();
         $completedRequests = [];
@@ -353,6 +455,10 @@ class RequestsController extends Controller
                         if (isset($requestData['status']) && $requestData['status'] === 'completed') {
                             $requestData['user_id'] = $userId;
                             $requestData['request_id'] = $requestId;
+                            // Ensure created_by is set
+                            if (!isset($requestData['created_by'])) {
+                                $requestData['created_by'] = $userId;
+                            }
                             $completedRequests[] = $requestData;
                         }
                     }
@@ -362,8 +468,26 @@ class RequestsController extends Controller
 
         // Sort by completion date (newest first)
         usort($completedRequests, function($a, $b) {
-            $dateA = $a['completion_data']['completed_at'] ?? '';
-            $dateB = $b['completion_data']['completed_at'] ?? '';
+            // Handle both array (multi-completer) and object (single completer) formats
+            $dateA = '';
+            $dateB = '';
+
+            if (isset($a['completion_data'])) {
+                if (is_array($a['completion_data']) && isset($a['completion_data'][0])) {
+                    $dateA = $a['completion_data'][0]['completed_at'] ?? '';
+                } elseif (is_array($a['completion_data']) && isset($a['completion_data']['completed_at'])) {
+                    $dateA = $a['completion_data']['completed_at'] ?? '';
+                }
+            }
+
+            if (isset($b['completion_data'])) {
+                if (is_array($b['completion_data']) && isset($b['completion_data'][0])) {
+                    $dateB = $b['completion_data'][0]['completed_at'] ?? '';
+                } elseif (is_array($b['completion_data']) && isset($b['completion_data']['completed_at'])) {
+                    $dateB = $b['completion_data']['completed_at'] ?? '';
+                }
+            }
+
             return strcmp($dateB, $dateA);
         });
 
@@ -378,7 +502,10 @@ class RequestsController extends Controller
             ['path' => request()->url(), 'query' => request()->query()]
         );
 
-        return view('requests.completed', ['data' => $paginator]);
+        return view('requests.completed', [
+            'data' => $paginator,
+            'view' => 'completed'
+        ]);
     }
 
     /**

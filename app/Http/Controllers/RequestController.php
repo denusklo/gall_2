@@ -16,16 +16,13 @@ class RequestController extends Controller
 
     /**
      * Display a listing of the resource.
+     * Redirects to the new unified requests interface.
      *
      * @return \Illuminate\Http\Response
      */
     public function index()
     {
-        $uid = session()->get('verified_user_id');
-        $database = $this->database;
-
-        $data = $database->getReference('Requests/' . $uid)->getvalue();
-        return view('user.home', compact('data'));
+        return redirect()->route('requests.my');
     }
 
     /**
@@ -54,7 +51,9 @@ class RequestController extends Controller
             'phone_no' => 'required',
             'email' => 'required',
             'location' => 'required',
-            'description' => 'required'
+            'description' => 'required',
+            'allow_multiple_completers' => 'boolean',
+            'required_completers' => 'nullable|integer|min:1|max:50'
         ]);
 
         $name = $request->name;
@@ -63,7 +62,8 @@ class RequestController extends Controller
         $email = $request->email;
         $location = $request->location;
         $description = $request->description;
-        // $user_id = rand(1000000, 9999999);
+        $allowMultiple = $request->boolean('allow_multiple_completers', false);
+        $requiredCompleters = $allowMultiple ? ($request->required_completers ?? 1) : 1;
 
         $data = [
             'name' => $name,
@@ -71,12 +71,17 @@ class RequestController extends Controller
             'phone_no' => $phone_no,
             'email' => $email,
             'location' => $location,
-            'description' => $description
+            'description' => $description,
+            'created_by' => session()->get('verified_user_id'),
+            'allow_multiple_completers' => $allowMultiple,
+            'required_completers' => $requiredCompleters,
+            'completers' => [],
+            'status' => 'pending'
         ];
 
         $database->getReference('Requests/' . session()->get('verified_user_id'))->push($data);
 
-        return redirect()->route('request.index')->with('success', 'Request created successfully!');
+        return redirect()->route('requests.my')->with('success', 'Request created successfully!');
     }
 
 

@@ -33,7 +33,7 @@ class VolunteerMiddleware
             $isAdmin = isset($customClaims['admin']) && $customClaims['admin'] === true;
 
             if (!$isVolunteer && !$isAdmin) {
-                return redirect()->route('user.home')
+                return redirect()->route('requests.my')
                     ->with('error', 'You do not have volunteer privileges to complete requests.');
             }
 
