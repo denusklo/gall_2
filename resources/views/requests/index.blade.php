@@ -17,7 +17,20 @@
                                 My Requests
                             @endif
                         </h5>
-                        <div class="mt-2 mt-md-0">
+                        <div class="mt-2 mt-md-0 d-flex align-items-center">
+                            <div class="mr-2">
+                                <div class="input-group input-group-sm" style="width: 250px;">
+                                    <input type="text" id="searchInput" class="form-control" placeholder="Search all columns..." value="{{ request('search') }}">
+                                    <div class="input-group-append">
+                                        <span class="btn btn-outline-secondary">
+                                            <i class="fa fa-search"></i>
+                                        </span>
+                                        <button id="clearSearch" class="btn btn-outline-secondary" style="display: {{ request('search') ? 'inline-block' : 'none' }};">
+                                            <i class="fa fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             <a href="{{route('requests.my')}}" class="btn btn-sm @if(($view ?? '') === 'my') btn-primary @else btn-outline-primary @endif mr-1">My Requests</a>
                             <a href="{{route('requests.all')}}" class="btn btn-sm @if(($view ?? '') === 'all') btn-primary @else btn-outline-primary @endif mr-1">All Requests</a>
                             <a href="{{route('requests.completed')}}" class="btn btn-sm @if(($view ?? '') === 'completed') btn-primary @else btn-outline-primary @endif mr-1">Completed</a>
@@ -341,6 +354,50 @@
 @section('scripts')
 <script>
     $(document).ready(function() {
+        // Live Search
+        let searchTimeout;
+        const searchInput = $('#searchInput');
+        const clearButton = $('#clearSearch');
+        const currentUrl = window.location.pathname;
+
+        searchInput.on('input', function() {
+            const searchTerm = $(this).val();
+
+            // Show/hide clear button
+            if (searchTerm) {
+                clearButton.show();
+            } else {
+                clearButton.hide();
+            }
+
+            // Debounce search (wait 300ms after user stops typing)
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(function() {
+                performSearch(searchTerm);
+            }, 300);
+        });
+
+        clearButton.on('click', function() {
+            searchInput.val('');
+            clearButton.hide();
+            performSearch('');
+        });
+
+        function performSearch(searchTerm) {
+            // Update URL without page refresh
+            const url = new URL(window.location);
+            if (searchTerm) {
+                url.searchParams.set('search', searchTerm);
+            } else {
+                url.searchParams.delete('search');
+            }
+            url.searchParams.delete('page'); // Reset to page 1
+            window.history.pushState({}, '', url);
+
+            // Reload page content
+            window.location.reload();
+        }
+
         // View Modal
         $('.btn-view').on('click', function() {
             const status = $(this).data('status');

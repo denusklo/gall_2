@@ -54,6 +54,21 @@ class RequestsController extends Controller
             $data = $formattedData;
         }
 
+        // Apply search filter
+        $search = request()->get('search');
+        if ($search) {
+            $data = array_filter($data, function($request) use ($search) {
+                return stripos($request['name'] ?? '', $search) !== false ||
+                       stripos($request['email'] ?? '', $search) !== false ||
+                       stripos($request['phone_no'] ?? '', $search) !== false ||
+                       stripos($request['location'] ?? '', $search) !== false ||
+                       stripos($request['description'] ?? '', $search) !== false ||
+                       stripos((string)($request['age'] ?? ''), $search) !== false;
+            });
+            // Re-index array after filtering
+            $data = array_values($data);
+        }
+
         // Paginate the data
         $perPage = 10;
         $currentPage = request()->get('page', 1);
@@ -109,6 +124,21 @@ class RequestsController extends Controller
                     }
                 }
             }
+        }
+
+        // Apply search filter
+        $search = request()->get('search');
+        if ($search) {
+            $pendingRequests = array_filter($pendingRequests, function($request) use ($search) {
+                return stripos($request['name'] ?? '', $search) !== false ||
+                       stripos($request['email'] ?? '', $search) !== false ||
+                       stripos($request['phone_no'] ?? '', $search) !== false ||
+                       stripos($request['location'] ?? '', $search) !== false ||
+                       stripos($request['description'] ?? '', $search) !== false ||
+                       stripos((string)($request['age'] ?? ''), $search) !== false;
+            });
+            // Re-index array after filtering
+            $pendingRequests = array_values($pendingRequests);
         }
 
         // Paginate the data
@@ -450,6 +480,21 @@ class RequestsController extends Controller
                     }
                 }
             }
+        }
+
+        // Apply search filter
+        $search = request()->get('search');
+        if ($search) {
+            $completedRequests = array_filter($completedRequests, function($request) use ($search) {
+                return stripos($request['name'] ?? '', $search) !== false ||
+                       stripos($request['email'] ?? '', $search) !== false ||
+                       stripos($request['phone_no'] ?? '', $search) !== false ||
+                       stripos($request['location'] ?? '', $search) !== false ||
+                       stripos($request['description'] ?? '', $search) !== false ||
+                       stripos((string)($request['age'] ?? ''), $search) !== false;
+            });
+            // Re-index array after filtering
+            $completedRequests = array_values($completedRequests);
         }
 
         // Sort by completion date (newest first)
