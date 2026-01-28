@@ -361,33 +361,71 @@ const FcmService = {
                 console.error('Error deleting FCM token:', error);
             }
         }
+    },
+
+    /**
+     * Fetch API token from server if not in localStorage
+     */
+    async fetchApiToken() {
+        try {
+            console.log('[FCM] Fetching API token from server...');
+            const response = await fetch('/apiv/_1/token', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const token = data.token;
+                localStorage.setItem(this.getApiKey(), token);
+                console.log('[FCM] API token fetched and stored');
+                return token;
+            } else {
+                console.error('[FCM] Failed to fetch API token. Status:', response.status);
+                return null;
+            }
+        } catch (error) {
+            console.error('[FCM] Error fetching API token:', error);
+            return null;
+        }
     }
 };
 
 // Initialize FCM when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     console.log('[FCM] DOM loaded, checking initialization...');
 
-    // Check if user is authenticated
-    const apiToken = localStorage.getItem(FcmService.getApiKey());
-    console.log('[FCM] API token found:', !!apiToken);
-
+    // Check Firebase availability first
     console.log('[FCM] Firebase available:', typeof firebase !== 'undefined');
     console.log('[FCM] Firebase config:', window.FIREBASE_CONFIG);
 
-    if (apiToken && typeof firebase !== 'undefined') {
+    if (typeof firebase === 'undefined') {
+        console.error('[FCM] Skipping initialization: Firebase SDK not loaded');
+        return;
+    }
+
+    // Check if user is authenticated (API token in localStorage or get from server)
+    let apiToken = localStorage.getItem(FcmService.getApiKey());
+    console.log('[FCM] API token found in localStorage:', !!apiToken);
+
+    // If no token in localStorage, try to fetch it from server
+    if (!apiToken) {
+        console.log('[FCM] No token in localStorage, attempting to fetch from server...');
+        apiToken = await FcmService.fetchApiToken();
+    }
+
+    if (apiToken) {
         console.log('[FCM] Initializing FCM service...');
         // Delay initialization to ensure Firebase is ready
         setTimeout(() => {
             FcmService.init();
         }, 1000);
     } else {
-        if (!apiToken) {
-            console.log('[FCM] Skipping initialization: No API token found (user not authenticated)');
-        }
-        if (typeof firebase === 'undefined') {
-            console.error('[FCM] Skipping initialization: Firebase SDK not loaded');
-        }
+        console.log('[FCM] Skipping initialization: User not authenticated (no session)');
     }
 });
 
