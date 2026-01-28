@@ -164,9 +164,7 @@ const formatDate = (dateString) => {
 };
 
 const confirmDelete = () => {
-    if (confirm('Are you sure you want to delete this image?')) {
-        emit('delete', props.gallery.id);
-    }
+    emit('delete', props.gallery.id);
 };
 
 // Image error handling

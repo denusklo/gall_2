@@ -43,7 +43,7 @@ Route::prefix('_1')->group(function () {
         // Vercel Blob storage routes
         Route::post('vercel/generate-client-token', [VercelBlobController::class, 'generateClientToken']);
         Route::post('vercel/upload-callback', [VercelBlobController::class, 'handleUploadCallback']);
-        Route::delete('vercel/delete-blob', [VercelBlobController::class, 'deleteBlob']);
+        Route::post('vercel/delete-blob', [VercelBlobController::class, 'deleteBlob']);
         Route::get('vercel/list-blobs', [VercelBlobController::class, 'listBlobs']);
 
         // Image endpoints (formerly galleries - individual images)

@@ -107,15 +107,30 @@
                     </div>
                 </form>
 
-                <div v-else class="success-message">
+                <!-- Upload Complete State -->
+                <div v-else-if="uploadedCount > 0 || failedCount > 0" class="upload-result-message">
                     <div class="text-center">
-                        <i class="fas fa-check-circle success-icon"></i>
-                        <h4>Bulk Upload Complete!</h4>
-                        <p>Successfully uploaded {{ uploadedCount }} of {{ totalFiles }} files.</p>
-                        <p v-if="failedCount > 0" class="text-danger">
-                            {{ failedCount }} files failed to upload.
-                        </p>
-                        <button @click="closeModal" class="btn btn-primary">Close</button>
+                        <template v-if="failedCount === 0">
+                            <!-- All successful -->
+                            <i class="fas fa-check-circle success-icon"></i>
+                            <h4>Bulk Upload Complete!</h4>
+                            <p class="text-success">Successfully uploaded {{ uploadedCount }} of {{ totalFiles }} files.</p>
+                        </template>
+                        <template v-else-if="uploadedCount === 0">
+                            <!-- All failed -->
+                            <i class="fas fa-times-circle error-icon"></i>
+                            <h4>Upload Failed</h4>
+                            <p class="text-danger">All {{ failedCount }} files failed to upload.</p>
+                            <p class="text-muted small">Please check your connection and try again.</p>
+                        </template>
+                        <template v-else>
+                            <!-- Partial success -->
+                            <i class="fas fa-exclamation-triangle warning-icon"></i>
+                            <h4>Upload Partially Complete</h4>
+                            <p>Successfully uploaded {{ uploadedCount }} of {{ totalFiles }} files.</p>
+                            <p class="text-warning">{{ failedCount }} files failed to upload.</p>
+                        </template>
+                        <button @click="closeModal" class="btn btn-primary mt-3">Close</button>
                     </div>
                 </div>
             </div>
@@ -128,7 +143,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useImageStore } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
 
-const emit = defineEmits(['close', 'upload-complete']);
+const emit = defineEmits(['close', 'upload-complete', 'refresh']);
 const imageStore = useImageStore();
 const categoryStore = useCategoryStore();
 const categories = computed(() => categoryStore.categories);
@@ -427,6 +442,11 @@ const closeModal = () => {
         }
     }
 
+    // Emit refresh event if upload was complete
+    if (isComplete.value && (uploadedCount.value > 0 || failedCount.value > 0)) {
+        emit('refresh');
+    }
+
     emit('close');
 };
 </script>
@@ -704,7 +724,7 @@ const closeModal = () => {
     color: #721c24;
 }
 
-.success-message {
+.upload-result-message {
     text-align: center;
     padding: 30px 0;
 }
@@ -712,6 +732,18 @@ const closeModal = () => {
 .success-icon {
     font-size: 4rem;
     color: #28a745;
+    margin-bottom: 15px;
+}
+
+.error-icon {
+    font-size: 4rem;
+    color: #dc3545;
+    margin-bottom: 15px;
+}
+
+.warning-icon {
+    font-size: 4rem;
+    color: #ffc107;
     margin-bottom: 15px;
 }
 

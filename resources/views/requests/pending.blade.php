@@ -7,10 +7,12 @@
         <div class="col-md-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>All Requests</span>
+                    <span>Pending Requests</span>
                     <div>
-                        <a href="{{route('requests.pending')}}" class="btn btn-info btn-sm mr-2">Pending Only</a>
-                        <a href="{{route('requests.completed')}}" class="btn btn-secondary btn-sm mr-2">Completed Requests</a>
+                        <a href="{{route('requests.index')}}" class="btn btn-primary btn-sm mr-2">All Requests</a>
+                        @if(session()->get('verified_user_id'))
+                            <a href="{{route('requests.completed')}}" class="btn btn-secondary btn-sm mr-2">Completed Requests</a>
+                        @endif
                         <a href="{{route('request.create')}}" class="btn btn-success btn-sm">Create New Request</a>
                     </div>
                 </div>
@@ -21,7 +23,6 @@
                                 <thead>
                                     <tr>
                                         <th>#</th>
-                                        <th>Status</th>
                                         <th>Name</th>
                                         <th>Age</th>
                                         <th>Email</th>
@@ -35,17 +36,6 @@
                                     @foreach ($data as $index => $request)
                                         <tr>
                                             <td>{{ $data->firstItem() + $index }}</td>
-                                            <td>
-                                                @php
-                                                    $status = $request['status'] ?? 'pending';
-                                                    $statusClass = $status === 'completed' ? 'success' : 'warning';
-                                                    $statusIcon = $status === 'completed' ? 'check' : 'clock';
-                                                @endphp
-                                                <span class="badge badge-{{ $statusClass }}">
-                                                    <i class="fa fa-{{ $statusIcon }}"></i>
-                                                    {{ ucfirst($status) }}
-                                                </span>
-                                            </td>
                                             <td>{{ $request['name'] ?? 'N/A' }}</td>
                                             <td>{{ $request['age'] ?? 'N/A' }}</td>
                                             <td>{{ $request['email'] ?? 'N/A' }}</td>
@@ -59,13 +49,7 @@
                                                     data-email="{{ $request['email'] ?? '' }}"
                                                     data-phone="{{ $request['phone_no'] ?? '' }}"
                                                     data-location="{{ $request['location'] ?? '' }}"
-                                                    data-description="{{ $request['description'] ?? '' }}"
-                                                    data-status="{{ $request['status'] ?? 'pending' }}"
-                                                    @if(isset($request['completion_data']))
-                                                        data-completed-by="{{ $request['completion_data']['completed_by_name'] ?? '' }}"
-                                                        data-completed-at="{{ $request['completion_data']['completed_at'] ?? '' }}"
-                                                        data-completion-notes="{{ $request['completion_data']['completion_notes'] ?? '' }}"
-                                                    @endif>
+                                                    data-description="{{ $request['description'] ?? '' }}">
                                                     <i class="fa fa-eye"></i>
                                                 </button>
                                                 <button type="button" class="btn btn-sm btn-warning btn-edit"
@@ -85,14 +69,12 @@
                                                     data-name="{{ $request['name'] ?? '' }}">
                                                     <i class="fa fa-trash"></i>
                                                 </button>
-                                                @if(($request['status'] ?? 'pending') === 'pending')
-                                                    <button type="button" class="btn btn-sm btn-success btn-complete"
-                                                        data-id="{{ $request['request_id'] }}"
-                                                        data-user-id="{{ $request['user_id'] }}"
-                                                        data-name="{{ $request['name'] ?? '' }}">
-                                                        <i class="fa fa-check"></i> Complete
-                                                    </button>
-                                                @endif
+                                                <button type="button" class="btn btn-sm btn-success btn-complete"
+                                                    data-id="{{ $request['request_id'] }}"
+                                                    data-user-id="{{ $request['user_id'] }}"
+                                                    data-name="{{ $request['name'] ?? '' }}">
+                                                    <i class="fa fa-check"></i> Complete
+                                                </button>
                                             </td>
                                         </tr>
                                     @endforeach
@@ -106,7 +88,7 @@
                         </div>
                     @else
                         <div class="alert alert-info">
-                            No requests found. <a href="{{ route('request.create') }}">Create a new request</a>
+                            No pending requests found. <a href="{{ route('request.create') }}">Create a new request</a>
                         </div>
                     @endif
                 </div>
@@ -127,10 +109,6 @@
             </div>
             <div class="modal-body">
                 <table class="table table-bordered">
-                    <tr>
-                        <th>Status</th>
-                        <td id="view-status"></td>
-                    </tr>
                     <tr>
                         <th>Name</th>
                         <td id="view-name"></td>
@@ -154,16 +132,6 @@
                     <tr>
                         <th>Description</th>
                         <td id="view-description"></td>
-                    </tr>
-                    <tr id="completion-info" style="display: none;">
-                        <th>Completion Info</th>
-                        <td>
-                            <strong>Completed by:</strong> <span id="view-completed-by"></span><br>
-                            <strong>Completed at:</strong> <span id="view-completed-at"></span><br>
-                            @if(!empty($request['completion_data']['completion_notes']))
-                                <strong>Notes:</strong> <span id="view-completion-notes"></span>
-                            @endif
-                        </td>
                     </tr>
                 </table>
             </div>
@@ -299,40 +267,12 @@
     $(document).ready(function() {
         // View Modal
         $('.btn-view').on('click', function() {
-            const status = $(this).data('status');
-            const completedBy = $(this).data('completed-by');
-            const completedAt = $(this).data('completed-at');
-            const completionNotes = $(this).data('completion-notes');
-
             $('#view-name').text($(this).data('name'));
             $('#view-age').text($(this).data('age'));
             $('#view-email').text($(this).data('email'));
             $('#view-phone').text($(this).data('phone'));
             $('#view-location').text($(this).data('location'));
             $('#view-description').text($(this).data('description'));
-
-            // Set status badge
-            const statusElement = $('#view-status');
-            if (status === 'completed') {
-                statusElement.html('<span class="badge badge-success"><i class="fa fa-check"></i> Completed</span>');
-            } else {
-                statusElement.html('<span class="badge badge-warning"><i class="fa fa-clock"></i> Pending</span>');
-            }
-
-            // Show completion info if completed
-            if (status === 'completed') {
-                $('#view-completed-by').text(completedBy || 'Unknown');
-                // Format the completion date
-                if (completedAt) {
-                    const date = new Date(completedAt);
-                    $('#view-completed-at').text(date.toLocaleString());
-                }
-                $('#view-completion-notes').text(completionNotes || 'No notes provided');
-                $('#completion-info').show();
-            } else {
-                $('#completion-info').hide();
-            }
-
             $('#viewModal').modal('show');
         });
 

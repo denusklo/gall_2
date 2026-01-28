@@ -28,7 +28,7 @@ class ImageController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request) {
-        $query = Image::query();
+        $query = Image::where('user_id', auth()->id());
 
         // Apply search filter
         if ($request->has('search') && !empty($request->search)) {
@@ -142,7 +142,9 @@ class ImageController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function show($id) {
-        $image = Image::with(['categories', 'galleries'])->findOrFail($id);
+        $image = Image::with(['categories', 'galleries'])
+            ->where('user_id', auth()->id())
+            ->findOrFail($id);
         return response()->json($image);
     }
 
@@ -154,7 +156,7 @@ class ImageController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function update(Request $request, $id) {
-        $image = Image::findOrFail($id);
+        $image = Image::where('user_id', auth()->id())->findOrFail($id);
 
         $request->validate([
             'title' => 'string|max:255',
@@ -199,7 +201,7 @@ class ImageController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function destroy($id) {
-        $image = Image::findOrFail($id);
+        $image = Image::where('user_id', auth()->id())->findOrFail($id);
 
         try {
             // Delete file from storage based on provider
@@ -211,10 +213,9 @@ class ImageController extends Controller {
                         'Authorization' => 'Bearer ' . $this->supabaseKey,
                     ])->delete("{$this->supabaseUrl}/storage/v1/object/{$image->storage_bucket}/{$image->storage_path}");
                 }
-            } elseif ($image->isVercelStorage()) {
-                // Delete from Vercel Blob - handled by VercelBlobController
-                // We'll keep the image record deletion here
             }
+            // Note: Vercel deletion is handled by the frontend via /apiv/_1/vercel/delete-blob
+            // before calling this endpoint, so we don't delete from Vercel here.
 
             // Delete image record
             $image->delete();
@@ -236,20 +237,24 @@ class ImageController extends Controller {
      */
     public function stats() {
         try {
+            $userId = auth()->id();
+
             // Get total images count
-            $totalImages = Image::count();
+            $totalImages = Image::where('user_id', $userId)->count();
 
             // Get total storage used in bytes
-            $totalStorage = Image::sum('size');
+            $totalStorage = Image::where('user_id', $userId)->sum('size');
 
             // Get recent uploads (last 30 days)
-            $recentUploads = Image::where('created_at', '>=', now()->subDays(30))->count();
+            $recentUploads = Image::where('user_id', $userId)
+                ->where('created_at', '>=', now()->subDays(30))->count();
 
             // Get file types distribution
-            $fileTypes = Image::select(
-                DB::raw("SUBSTRING_INDEX(mime_type, '/', 1) as type"),
-                DB::raw('COUNT(*) as count')
-            )
+            $fileTypes = Image::where('user_id', $userId)
+                ->select(
+                    DB::raw("SUBSTRING_INDEX(mime_type, '/', 1) as type"),
+                    DB::raw('COUNT(*) as count')
+                )
                 ->groupBy('type')
                 ->get()
                 ->map(function ($item) {
@@ -263,7 +268,8 @@ class ImageController extends Controller {
             $timeline = [];
             for ($i = 11; $i >= 0; $i--) {
                 $month = now()->subMonths($i);
-                $count = Image::whereYear('created_at', $month->year)
+                $count = Image::where('user_id', $userId)
+                    ->whereYear('created_at', $month->year)
                     ->whereMonth('created_at', $month->month)
                     ->count();
 

@@ -286,15 +286,32 @@ class VercelBlobController extends Controller
 
         try {
             $token = config('services.vercel.blob_read_write_token');
-            
-            // Make DELETE request to Vercel Blob API
+            // Use the Vercel Blob API URL, not the storage URL
+            // API: https://vercel.com/api/blob
+            // Storage: https://*.public.blob.vercel-storage.com
+            $apiUrl = config('services.vercel.blob_api_url', 'https://vercel.com/api/blob');
+
+            Log::info('Deleting Vercel blob', ['url' => $request->url]);
+
+            // Vercel Blob API uses POST /delete with { urls: [...] } body
+            // Note: 'authorization' header must be lowercase (Vercel SDK behavior)
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-            ])->delete($request->url);
+                'authorization' => 'Bearer ' . $token,  // lowercase 'a'
+                'x-api-version' => '11',  // required by Vercel Blob API
+                'content-type' => 'application/json',  // lowercase 'c'
+            ])->post($apiUrl . '/delete', [
+                'urls' => [$request->url],
+            ]);
 
             if ($response->successful()) {
+                Log::info('Vercel blob deleted successfully', ['url' => $request->url]);
                 return response()->json(['message' => 'File deleted successfully']);
             } else {
+                Log::error('Failed to delete Vercel blob', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'url' => $request->url,
+                ]);
                 return response()->json([
                     'error' => 'Failed to delete file: ' . ($response->json()['error']['message'] ?? 'Unknown error')
                 ], $response->status());
@@ -302,7 +319,7 @@ class VercelBlobController extends Controller
         } catch (\Exception $e) {
             Log::error('Error deleting Vercel blob: ' . $e->getMessage(), [
                 'exception' => $e,
-                'url' => $request->url,
+                'url' => $request->url ?? 'unknown',
             ]);
             return response()->json(['error' => 'Failed to delete file'], 500);
         }

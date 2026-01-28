@@ -133,10 +133,8 @@ const editGallery = () => {
 };
 
 const deleteGallery = () => {
-    if (confirm('Are you sure you want to delete this image?')) {
-        emit('delete', props.gallery.id);
-        emit('close');
-    }
+    emit('delete', props.gallery.id);
+    emit('close');
 };
 </script>
 

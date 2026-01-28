@@ -184,22 +184,39 @@ export const useImageStore = defineStore('image', {
     },
 
     async deleteImage(id) {
-      try {
-        const image = this.images.find(img => img.id === id);
+      console.log('[imageStore] deleteImage called with id:', id);
+      const image = this.images.find(img => img.id === id);
+      console.log('[imageStore] Found image:', image);
 
-        // If it's a Vercel upload, delete from Vercel
-        if (image && image.storage_provider === 'vercel') {
-          await axios.delete('/apiv/_1/vercel/delete-blob', {
-            data: { url: image.storage_url }
+      if (!image) {
+        console.error('[imageStore] Image not found in local state');
+        throw new Error('Image not found');
+      }
+
+      try {
+        // If it's a Vercel upload, delete from Vercel first
+        if (image.storage_provider === 'vercel') {
+          console.log('[imageStore] Deleting from Vercel, URL:', image.storage_url);
+          await axios.post('/apiv/_1/vercel/delete-blob', {
+            url: image.storage_url
           });
+          console.log('[imageStore] Vercel blob deleted successfully');
         }
 
+        // Then delete from database
+        console.log('[imageStore] Deleting image from API, endpoint:', `/apiv/_1/images/${id}`);
         await axios.delete(`/apiv/_1/images/${id}`);
-        this.images = this.images.filter(image => image.id !== id);
+        console.log('[imageStore] API delete successful');
+
+        // Only remove from local state if BOTH deletions succeeded
+        this.images = this.images.filter(img => img.id !== id);
         this.error = null;
       } catch (error) {
-        this.error = error.response?.data?.message || 'Failed to delete image';
-        console.error('Error deleting image:', error);
+        console.error('[imageStore] Error deleting image:', error);
+        console.error('[imageStore] Error response:', error.response);
+        const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to delete image';
+        this.error = errorMessage;
+        throw new Error(errorMessage);
       }
     },
 
