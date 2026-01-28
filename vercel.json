@@ -8,6 +8,14 @@
     },
     "routes": [
         {
+            "src": "/firebase-messaging-sw.js",
+            "dest": "/public/firebase-messaging-sw.js",
+            "headers": {
+                "Content-Type": "application/javascript",
+                "Service-Worker-Allowed": "/"
+            }
+        },
+        {
             "src": "/(css|js|images)/(.*)",
             "dest": "public/$1/$2"
         },

@@ -121,7 +121,7 @@ class FirebaseAuthController extends Controller
 
             session()->flash('success', "Logged in successfully");
 
-            return redirect()->route('user.home');
+            return redirect()->route('requests.my');
         } catch (InvalidToken $e) {
             return redirect()->route('firebase.login.form')->withInput()->with('error', 'The token is invalid: ' . $e->getMessage());
         } catch (\InvalidArgumentException $e) {

@@ -61,21 +61,29 @@ class FirebaseUserController extends Controller
     public function update(Request $request)
     {
         $auth = $this->auth;
-        
+
         if (empty(session()->get('verified_user_id'))) {
             return redirect()->route('firebase.login.form')->with('error', 'Login to access this page');
         }
-        
+
         $uid = $request->uid ?? session()->get('verified_user_id');
-        
+
+        // Validate phone number format (E.164 format: + followed by digits only)
+        $request->validate([
+            'name' => 'nullable|string|max:255',
+            'phone' => 'nullable|regex:/^\+[1-9]\d{1,14}$/'
+        ], [
+            'phone.regex' => 'Phone number must be in E.164 format (e.g., +1234567890). Only digits after the + sign are allowed.'
+        ]);
+
         try {
             $properties = [
                 'displayName' => $request->name,
                 'phoneNumber' => $request->phone
             ];
-            
+
             $updatedUser = $auth->updateUser($uid, $properties);
-            
+
             return redirect()->back()->with('success', 'User information updated successfully!');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', $e->getMessage());

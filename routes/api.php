@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\GalleryController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\GalleryStorageController;
 use App\Http\Controllers\Api\VercelBlobController;
+use App\Http\Controllers\Api\FcmController;
 
 /*
 |--------------------------------------------------------------------------
@@ -72,6 +73,33 @@ Route::prefix('_1')->group(function () {
         });
 
         Route::apiResource('categories', CategoryController::class);
+
+        // Test auth endpoint
+        Route::get('/test-auth', function(Request $request) {
+            return response()->json([
+                'authenticated' => true,
+                'user' => $request->user(),
+                'session_uid' => session()->get('verified_user_id'),
+                'firebase_uid' => $request->user()->firebase_uid ?? null
+            ]);
+        });
+
+        // FCM Notification routes
+        Route::prefix('fcm')->group(function() {
+            Route::post('/token', [FcmController::class, 'storeToken']);
+            Route::delete('/token', [FcmController::class, 'removeToken']);
+            Route::get('/tokens', [FcmController::class, 'getTokens']);
+            Route::post('/test', [FcmController::class, 'testNotification']);
+        });
+
+        // Notifications routes
+        Route::prefix('notifications')->group(function() {
+            Route::get('/', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+            Route::get('/unread-count', [\App\Http\Controllers\Api\NotificationController::class, 'unreadCount']);
+            Route::put('/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
+            Route::put('/read-all', [\App\Http\Controllers\Api\NotificationController::class, 'markAllAsRead']);
+            Route::delete('/{id}', [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
+        });
     });
 
     Route::get('config/supabase-url', function () {

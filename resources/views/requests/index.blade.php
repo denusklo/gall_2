@@ -6,12 +6,36 @@
     <div class="row">
         <div class="col-md-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>All Requests</span>
-                    <div>
-                        <a href="{{route('requests.pending')}}" class="btn btn-info btn-sm mr-2">Pending Only</a>
-                        <a href="{{route('requests.completed')}}" class="btn btn-secondary btn-sm mr-2">Completed Requests</a>
-                        <a href="{{route('request.create')}}" class="btn btn-success btn-sm">Create New Request</a>
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <h5 class="mb-0">
+                            @if($view ?? '' === 'all')
+                                All Requests
+                            @elseif($view ?? '' === 'completed')
+                                Completed Requests
+                            @else
+                                My Requests
+                            @endif
+                        </h5>
+                        <div class="mt-2 mt-md-0 d-flex align-items-center">
+                            <div class="mr-2">
+                                <div class="input-group input-group-sm" style="width: 250px;">
+                                    <input type="text" id="searchInput" class="form-control" placeholder="Search all columns..." value="{{ request('search') }}">
+                                    <div class="input-group-append">
+                                        <span class="btn btn-outline-secondary">
+                                            <i class="fa fa-search"></i>
+                                        </span>
+                                        <button id="clearSearch" class="btn btn-outline-secondary" style="display: {{ request('search') ? 'inline-block' : 'none' }};">
+                                            <i class="fa fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <a href="{{route('requests.my')}}" class="btn btn-sm @if(($view ?? '') === 'my') btn-primary @else btn-outline-primary @endif mr-1">My Requests</a>
+                            <a href="{{route('requests.all')}}" class="btn btn-sm @if(($view ?? '') === 'all') btn-primary @else btn-outline-primary @endif mr-1">All Requests</a>
+                            <a href="{{route('requests.completed')}}" class="btn btn-sm @if(($view ?? '') === 'completed') btn-primary @else btn-outline-primary @endif mr-1">Completed</a>
+                            <a href="{{route('request.create')}}" class="btn btn-success btn-sm">Create New Request</a>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body">
@@ -33,18 +57,33 @@
                                 </thead>
                                 <tbody>
                                     @foreach ($data as $index => $request)
+                                        @php
+                                            $status = $request['status'] ?? 'pending';
+                                            $statusClass = $status === 'completed' ? 'success' : 'warning';
+                                            $statusIcon = $status === 'completed' ? 'check' : 'clock';
+                                            $allowMultiple = $request['allow_multiple_completers'] ?? false;
+                                            $requiredCompleters = $request['required_completers'] ?? 1;
+                                            $completers = $request['completers'] ?? [];
+                                            $completersCount = is_array($completers) ? count($completers) : 0;
+                                            $createdBy = $request['created_by'] ?? $request['user_id'] ?? null;
+                                            $currentUserId = session()->get('verified_user_id');
+                                            $isMyRequest = $createdBy === $currentUserId;
+                                            $hasCompleted = in_array($currentUserId, $completers ?? []);
+                                        @endphp
                                         <tr>
                                             <td>{{ $data->firstItem() + $index }}</td>
                                             <td>
-                                                @php
-                                                    $status = $request['status'] ?? 'pending';
-                                                    $statusClass = $status === 'completed' ? 'success' : 'warning';
-                                                    $statusIcon = $status === 'completed' ? 'check' : 'clock';
-                                                @endphp
-                                                <span class="badge badge-{{ $statusClass }}">
-                                                    <i class="fa fa-{{ $statusIcon }}"></i>
-                                                    {{ ucfirst($status) }}
-                                                </span>
+                                                @if($allowMultiple)
+                                                    <span class="badge badge-info">
+                                                        <i class="fa fa-users"></i>
+                                                        {{ $completersCount }}/{{ $requiredCompleters }}
+                                                    </span>
+                                                @else
+                                                    <span class="badge badge-{{ $statusClass }}">
+                                                        <i class="fa fa-{{ $statusIcon }}"></i>
+                                                        {{ ucfirst($status) }}
+                                                    </span>
+                                                @endif
                                             </td>
                                             <td>{{ $request['name'] ?? 'N/A' }}</td>
                                             <td>{{ $request['age'] ?? 'N/A' }}</td>
@@ -61,37 +100,51 @@
                                                     data-location="{{ $request['location'] ?? '' }}"
                                                     data-description="{{ $request['description'] ?? '' }}"
                                                     data-status="{{ $request['status'] ?? 'pending' }}"
+                                                    data-allow-multiple="{{ $allowMultiple ? 'true' : 'false' }}"
+                                                    data-required-completers="{{ $requiredCompleters }}"
+                                                    data-completers-count="{{ $completersCount }}"
                                                     @if(isset($request['completion_data']))
-                                                        data-completed-by="{{ $request['completion_data']['completed_by_name'] ?? '' }}"
-                                                        data-completed-at="{{ $request['completion_data']['completed_at'] ?? '' }}"
-                                                        data-completion-notes="{{ $request['completion_data']['completion_notes'] ?? '' }}"
+                                                        data-completion-data="{{ e(json_encode($request['completion_data'])) }}"
                                                     @endif>
                                                     <i class="fa fa-eye"></i>
                                                 </button>
-                                                <button type="button" class="btn btn-sm btn-warning btn-edit"
-                                                    data-id="{{ $request['request_id'] }}"
-                                                    data-user-id="{{ $request['user_id'] }}"
-                                                    data-name="{{ $request['name'] ?? '' }}"
-                                                    data-age="{{ $request['age'] ?? '' }}"
-                                                    data-email="{{ $request['email'] ?? '' }}"
-                                                    data-phone="{{ $request['phone_no'] ?? '' }}"
-                                                    data-location="{{ $request['location'] ?? '' }}"
-                                                    data-description="{{ $request['description'] ?? '' }}">
-                                                    <i class="fa fa-edit"></i>
-                                                </button>
-                                                <button type="button" class="btn btn-sm btn-danger btn-delete"
-                                                    data-id="{{ $request['request_id'] }}"
-                                                    data-user-id="{{ $request['user_id'] }}"
-                                                    data-name="{{ $request['name'] ?? '' }}">
-                                                    <i class="fa fa-trash"></i>
-                                                </button>
-                                                @if(($request['status'] ?? 'pending') === 'pending')
-                                                    <button type="button" class="btn btn-sm btn-success btn-complete"
+
+                                                @if($isMyRequest)
+                                                    <button type="button" class="btn btn-sm btn-warning btn-edit"
+                                                        data-id="{{ $request['request_id'] }}"
+                                                        data-user-id="{{ $request['user_id'] }}"
+                                                        data-name="{{ $request['name'] ?? '' }}"
+                                                        data-age="{{ $request['age'] ?? '' }}"
+                                                        data-email="{{ $request['email'] ?? '' }}"
+                                                        data-phone="{{ $request['phone_no'] ?? '' }}"
+                                                        data-location="{{ $request['location'] ?? '' }}"
+                                                        data-description="{{ $request['description'] ?? '' }}">
+                                                        <i class="fa fa-edit"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-danger btn-delete"
                                                         data-id="{{ $request['request_id'] }}"
                                                         data-user-id="{{ $request['user_id'] }}"
                                                         data-name="{{ $request['name'] ?? '' }}">
-                                                        <i class="fa fa-check"></i> Complete
+                                                        <i class="fa fa-trash"></i>
                                                     </button>
+                                                @endif
+
+                                                @if(($view ?? '' !== 'completed') && !$isMyRequest && ($status === 'pending'))
+                                                    @if(!$allowMultiple || !$hasCompleted)
+                                                        <button type="button" class="btn btn-sm btn-success btn-complete"
+                                                            data-id="{{ $request['request_id'] }}"
+                                                            data-user-id="{{ $request['user_id'] }}"
+                                                            data-name="{{ $request['name'] ?? '' }}"
+                                                            data-allow-multiple="{{ $allowMultiple ? 'true' : 'false' }}"
+                                                            data-completers-count="{{ $completersCount }}"
+                                                            data-required-completers="{{ $requiredCompleters }}">
+                                                            <i class="fa fa-check"></i> Complete
+                                                        </button>
+                                                    @else
+                                                        <button type="button" class="btn btn-sm btn-secondary" disabled>
+                                                            <i class="fa fa-check"></i> Completed
+                                                        </button>
+                                                    @endif
                                                 @endif
                                             </td>
                                         </tr>
@@ -106,7 +159,13 @@
                         </div>
                     @else
                         <div class="alert alert-info">
-                            No requests found. <a href="{{ route('request.create') }}">Create a new request</a>
+                            @if(($view ?? '') === 'all')
+                                No pending requests available. <a href="{{ route('request.create') }}">Create a new request</a>
+                            @elseif(($view ?? '') === 'completed')
+                                No completed requests yet.
+                            @else
+                                You haven't created any requests yet. <a href="{{ route('request.create') }}">Create a new request</a>
+                            @endif
                         </div>
                     @endif
                 </div>
@@ -130,6 +189,10 @@
                     <tr>
                         <th>Status</th>
                         <td id="view-status"></td>
+                    </tr>
+                    <tr id="multi-completer-info" style="display: none;">
+                        <th>Completion Progress</th>
+                        <td id="view-progress"></td>
                     </tr>
                     <tr>
                         <th>Name</th>
@@ -157,13 +220,7 @@
                     </tr>
                     <tr id="completion-info" style="display: none;">
                         <th>Completion Info</th>
-                        <td>
-                            <strong>Completed by:</strong> <span id="view-completed-by"></span><br>
-                            <strong>Completed at:</strong> <span id="view-completed-at"></span><br>
-                            @if(!empty($request['completion_data']['completion_notes']))
-                                <strong>Notes:</strong> <span id="view-completion-notes"></span>
-                            @endif
-                        </td>
+                        <td id="view-completion-list"></td>
                     </tr>
                 </table>
             </div>
@@ -277,7 +334,7 @@
                 <input type="hidden" name="user_id" id="complete-user-id">
                 <input type="hidden" name="request_id" id="complete-request-id">
                 <div class="modal-body">
-                    <p>Are you sure you want to mark the request from <strong id="complete-name"></strong> as completed?</p>
+                    <p id="complete-message"></p>
                     <div class="form-group">
                         <label for="completion_notes">Completion Notes (optional)</label>
                         <textarea name="completion_notes" id="completion_notes" rows="3" class="form-control" placeholder="Add any notes about how this request was completed..."></textarea>
@@ -297,12 +354,57 @@
 @section('scripts')
 <script>
     $(document).ready(function() {
+        // Live Search
+        let searchTimeout;
+        const searchInput = $('#searchInput');
+        const clearButton = $('#clearSearch');
+        const currentUrl = window.location.pathname;
+
+        searchInput.on('input', function() {
+            const searchTerm = $(this).val();
+
+            // Show/hide clear button
+            if (searchTerm) {
+                clearButton.show();
+            } else {
+                clearButton.hide();
+            }
+
+            // Debounce search (wait 300ms after user stops typing)
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(function() {
+                performSearch(searchTerm);
+            }, 300);
+        });
+
+        clearButton.on('click', function() {
+            searchInput.val('');
+            clearButton.hide();
+            performSearch('');
+        });
+
+        function performSearch(searchTerm) {
+            // Update URL without page refresh
+            const url = new URL(window.location);
+            if (searchTerm) {
+                url.searchParams.set('search', searchTerm);
+            } else {
+                url.searchParams.delete('search');
+            }
+            url.searchParams.delete('page'); // Reset to page 1
+            window.history.pushState({}, '', url);
+
+            // Reload page content
+            window.location.reload();
+        }
+
         // View Modal
         $('.btn-view').on('click', function() {
             const status = $(this).data('status');
-            const completedBy = $(this).data('completed-by');
-            const completedAt = $(this).data('completed-at');
-            const completionNotes = $(this).data('completion-notes');
+            const allowMultiple = $(this).data('allow-multiple') === 'true';
+            const requiredCompleters = $(this).data('required-completers') || 1;
+            const completersCount = $(this).data('completers-count') || 0;
+            const completionData = $(this).data('completion-data');
 
             $('#view-name').text($(this).data('name'));
             $('#view-age').text($(this).data('age'));
@@ -311,24 +413,59 @@
             $('#view-location').text($(this).data('location'));
             $('#view-description').text($(this).data('description'));
 
-            // Set status badge
             const statusElement = $('#view-status');
-            if (status === 'completed') {
-                statusElement.html('<span class="badge badge-success"><i class="fa fa-check"></i> Completed</span>');
+
+            if (allowMultiple) {
+                $('#multi-completer-info').show();
+                $('#view-progress').html(
+                    '<span class="badge badge-info"><i class="fa fa-users"></i> ' +
+                    completersCount + '/' + requiredCompleters + ' completed</span>'
+                );
+                if (completersCount >= requiredCompleters) {
+                    statusElement.html('<span class="badge badge-success"><i class="fa fa-check"></i> Completed</span>');
+                } else {
+                    statusElement.html('<span class="badge badge-warning"><i class="fa fa-clock"></i> In Progress</span>');
+                }
             } else {
-                statusElement.html('<span class="badge badge-warning"><i class="fa fa-clock"></i> Pending</span>');
+                $('#multi-completer-info').hide();
+                if (status === 'completed') {
+                    statusElement.html('<span class="badge badge-success"><i class="fa fa-check"></i> Completed</span>');
+                } else {
+                    statusElement.html('<span class="badge badge-warning"><i class="fa fa-clock"></i> Pending</span>');
+                }
             }
 
             // Show completion info if completed
-            if (status === 'completed') {
-                $('#view-completed-by').text(completedBy || 'Unknown');
-                // Format the completion date
-                if (completedAt) {
-                    const date = new Date(completedAt);
-                    $('#view-completed-at').text(date.toLocaleString());
-                }
-                $('#view-completion-notes').text(completionNotes || 'No notes provided');
+            if (status === 'completed' || (allowMultiple && completersCount > 0)) {
                 $('#completion-info').show();
+                let completionHtml = '';
+
+                if (completionData) {
+                    try {
+                        const data = JSON.parse(completionData);
+                        if (Array.isArray(data)) {
+                            data.forEach(function(completion) {
+                                const date = new Date(completion.completed_at);
+                                completionHtml += '<strong>' + completion.name + '</strong> - ' + date.toLocaleString();
+                                if (completion.notes) {
+                                    completionHtml += '<br><em>"' + completion.notes + '"</em>';
+                                }
+                                completionHtml += '<br><br>';
+                            });
+                        } else if (data.completed_at) {
+                            const date = new Date(data.completed_at);
+                            completionHtml = '<strong>Completed by:</strong> ' + (data.name || 'Unknown') + '<br>' +
+                                           '<strong>Completed at:</strong> ' + date.toLocaleString();
+                            if (data.notes) {
+                                completionHtml += '<br><strong>Notes:</strong> ' + data.notes;
+                            }
+                        }
+                    } catch(e) {
+                        completionHtml = 'Error loading completion data';
+                    }
+                }
+
+                $('#view-completion-list').html(completionHtml);
             } else {
                 $('#completion-info').hide();
             }
@@ -350,9 +487,7 @@
             $('#edit-user-id').val(userId);
             $('#edit-ref').val(requestId);
 
-            // Set form action
             $('#editForm').attr('action', "{{ route('requests.update', ':id') }}".replace(':id', requestId));
-
             $('#editModal').modal('show');
         });
 
@@ -366,9 +501,7 @@
             $('#delete-user-id').val(userId);
             $('#delete-ref').val(requestId);
 
-            // Set form action
             $('#deleteForm').attr('action', "{{ route('requests.destroy', ':id') }}".replace(':id', requestId));
-
             $('#deleteModal').modal('show');
         });
 
@@ -377,6 +510,9 @@
             const requestId = $(this).data('id');
             const userId = $(this).data('user-id');
             const name = $(this).data('name');
+            const allowMultiple = $(this).data('allow-multiple') === 'true';
+            const completersCount = $(this).data('completers-count') || 0;
+            const requiredCompleters = $(this).data('required-completers') || 1;
 
             $('#complete-name').text(name);
             $('#complete-user-id').val(userId);
@@ -387,6 +523,17 @@
 
             // Clear any previous completion notes
             $('#completion_notes').val('');
+
+            // Set appropriate message
+            if (allowMultiple) {
+                const remaining = requiredCompleters - completersCount - 1;
+                $('#complete-message').html(
+                    'Complete the request from <strong>' + name + '</strong>?<br>' +
+                    '<small class="text-muted">This will be your completion. After this, ' + remaining + ' more ' + (remaining === 1 ? 'person is' : 'people are') + ' needed.</small>'
+                );
+            } else {
+                $('#complete-message').text('Are you sure you want to mark the request from "' + name + '" as completed?');
+            }
 
             $('#completeModal').modal('show');
         });
