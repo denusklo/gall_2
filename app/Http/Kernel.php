@@ -68,5 +68,6 @@ class Kernel extends HttpKernel
         'firebase.auth' => \App\Http\Middleware\FirebaseAuthMiddleware::class,
         'firebase.admin' => \App\Http\Middleware\FirebaseAdminMiddleware::class,
         'volunteer' => \App\Http\Middleware\VolunteerMiddleware::class,
+        'unified.auth' => \App\Http\Middleware\UnifiedAuthMiddleware::class,
     ];
 }

@@ -18,7 +18,7 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request) {
-        $query = Gallery::query();
+        $query = Gallery::where('user_id', auth()->id());
 
         // Apply search filter
         if ($request->has('search') && !empty($request->search)) {
@@ -109,7 +109,8 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function show($id) {
-        $gallery = Gallery::with(['coverImage', 'user', 'images' => function ($query) {
+        $gallery = Gallery::where('user_id', auth()->id())
+            ->with(['coverImage', 'user', 'images' => function ($query) {
             $query->with('categories');
         }])->findOrFail($id);
 
@@ -124,7 +125,7 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function update(Request $request, $id) {
-        $gallery = Gallery::findOrFail($id);
+        $gallery = Gallery::where('user_id', auth()->id())->findOrFail($id);
 
         $request->validate([
             'title' => 'string|max:255',
@@ -159,7 +160,7 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function destroy($id) {
-        $gallery = Gallery::findOrFail($id);
+        $gallery = Gallery::where('user_id', auth()->id())->findOrFail($id);
 
         try {
             // Delete gallery record (images will be detached due to cascade)
@@ -184,8 +185,8 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function addImage(Request $request, $galleryId, $imageId) {
-        $gallery = Gallery::findOrFail($galleryId);
-        $image = Image::findOrFail($imageId);
+        $gallery = Gallery::where('user_id', auth()->id())->findOrFail($galleryId);
+        $image = Image::where('user_id', auth()->id())->findOrFail($imageId);
 
         try {
             // Get the current max order for this gallery
@@ -224,7 +225,7 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function removeImage($galleryId, $imageId) {
-        $gallery = Gallery::findOrFail($galleryId);
+        $gallery = Gallery::where('user_id', auth()->id())->findOrFail($galleryId);
 
         try {
             $gallery->images()->detach($imageId);
@@ -251,7 +252,7 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function setCoverImage(Request $request, $galleryId) {
-        $gallery = Gallery::findOrFail($galleryId);
+        $gallery = Gallery::where('user_id', auth()->id())->findOrFail($galleryId);
 
         $request->validate([
             'image_id' => 'required|exists:images,id',
@@ -284,7 +285,7 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function updateImageOrder(Request $request, $galleryId) {
-        $gallery = Gallery::findOrFail($galleryId);
+        $gallery = Gallery::where('user_id', auth()->id())->findOrFail($galleryId);
 
         $request->validate([
             'image_ids' => 'required|array',

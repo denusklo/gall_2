@@ -9,6 +9,7 @@ use App\Http\Controllers\Firebase\FirebaseController;
 use App\Http\Controllers\Firebase\FirebaseAuthController;
 use App\Http\Controllers\Firebase\FirebaseUserController;
 use App\Http\Controllers\Firebase\FirebaseAdminController;
+use App\Http\Controllers\Auth\UnifiedAuthController;
 use Kreait\Laravel\Firebase\Facades\FirebaseAuth;
 
 
@@ -26,8 +27,6 @@ use Kreait\Laravel\Firebase\Facades\FirebaseAuth;
 Route::get('/', function () {
     return view('welcome');
 });
-
-Auth::routes();
 
 Route::get('/home', [App\Http\Controllers\AuthDispatchController::class, 'dispatchHome'])->name('home');
 
@@ -53,11 +52,11 @@ Route::middleware('auth')->get('/apiv/_1/token', function (Request $request) {
     ]);
 });
 
-Route::middleware(['guest'])->group(function () {
-    Route::get('register', [UserController::class, 'register'])->name('user.create');
-    Route::get('login', [UserController::class, 'showLoginForm'])->name('user.login.form');
-    Route::post('register', [UserController::class, 'create'])->name('user.store');
-    Route::post('login', [UserController::class, 'login'])->name('user.login');
+Route::middleware(['guest'])->prefix('mysql')->as('mysql.')->group(function () {
+    Route::get('/register', [UserController::class, 'register'])->name('register');
+    Route::get('/login', [UserController::class, 'showLoginForm'])->name('login.form');
+    Route::post('/register', [UserController::class, 'create'])->name('register.store');
+    Route::post('/login', [UserController::class, 'login'])->name('login');
 });
 
 Route::middleware(['guest'])->prefix('firebase')->as('firebase.')->group(function () {
@@ -71,22 +70,44 @@ Route::prefix('firebase')->as('firebase.')->group(function () {
     Route::get('/logout', [FirebaseAuthController::class, 'logout'])->name('logout');
 });
 
+/*
+|--------------------------------------------------------------------------
+| Unified Authentication Routes (Default)
+|--------------------------------------------------------------------------
+|
+| These routes provide a single login system that works with both Firebase
+| and Laravel Sanctum. Users can log in with either system and will be
+| automatically synced to both sides.
+|
+| This is the DEFAULT login/register system.
+|
+*/
+Route::middleware(['guest'])->group(function () {
+    Route::get('/login', [UnifiedAuthController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [UnifiedAuthController::class, 'login'])->name('login.post');
+    Route::get('/register', [UnifiedAuthController::class, 'showRegistrationForm'])->name('register');
+    Route::post('/register', [UnifiedAuthController::class, 'register'])->name('register.post');
+});
+
+Route::get('/logout', [UnifiedAuthController::class, 'logout'])->name('logout');
+Route::get('/auth/status', [UnifiedAuthController::class, 'status'])->name('auth.status');
+
 Route::middleware( ['firebase.auth'] )->group(function() {
 
-    // Route::get('home', [App\Http\Controllers\RequestController::class, 'index'])->name('home');
-    Route::resource('my', RequestController::class)->names('request');
-    Route::resource('requests', RequestsController::class);
+    // Route::get('home', 'RequestController@index')->name('home');
+    Route::resource('my', 'RequestController')->names('request');
+    Route::resource('requests', 'RequestsController');
 
     // Request completion routes
-    Route::post('/requests/{user_id}/{request_id}/complete', [RequestsController::class, 'complete'])
+    Route::post('/requests/{user_id}/{request_id}/complete', 'RequestsController@complete')
         ->name('requests.complete')
         ->middleware('volunteer');
 
-    Route::get('/requests/completed', [RequestsController::class, 'showCompleted'])
+    Route::get('/requests/completed', 'RequestsController@showCompleted')
         ->name('requests.completed')
         ->middleware('volunteer');
 
-    Route::get('/requests/pending', [RequestsController::class, 'pending'])
+    Route::get('/requests/pending', 'RequestsController@pending')
         ->name('requests.pending');
 
     Route::get('users', [FirebaseUserController::class, 'index'])

@@ -61,7 +61,7 @@
         <upload-modal v-if="showUploadModal" @close="showUploadModal = false" @upload-complete="refreshGallery" />
 
         <bulk-upload-modal v-if="showBulkUploadModal" @close="showBulkUploadModal = false"
-            @upload-complete="refreshGallery" />
+            @refresh="refreshGallery" />
 
         <edit-modal v-if="imageToEdit" :gallery="imageToEdit" @close="imageToEdit = null"
             @update-complete="refreshGallery" />
@@ -127,16 +127,8 @@ const editImage = (image) => {
 };
 
 const deleteImage = async (id) => {
-    if (confirm('Are you sure you want to delete this image?')) {
-        await imageStore.deleteImage(id);
-
-        // If we deleted the last item on the current page, go to previous page
-        if (imageStore.images.length === 0 && imageStore.pagination.currentPage > 1) {
-            changePage(imageStore.pagination.currentPage - 1);
-        } else {
-            refreshGallery();
-        }
-    }
+    imageToDelete.value = id;
+    showDeleteConfirm.value = true;
 };
 
 const changePage = (page) => {
@@ -175,17 +167,32 @@ const onCategoryChanged = (categoryId) => {
 
 const confirmDelete = async () => {
     if (imageToDelete.value) {
-        await imageStore.deleteImage(imageToDelete.value);
+        console.log('[GalleryIndex] confirmDelete: Starting delete for image id:', imageToDelete.value);
+        try {
+            await imageStore.deleteImage(imageToDelete.value);
+            console.log('[GalleryIndex] confirmDelete: Delete successful');
 
-        // If we deleted the last item on the current page, go to previous page
-        if (imageStore.images.length === 0 && imageStore.pagination.currentPage > 1) {
-            changePage(imageStore.pagination.currentPage - 1);
-        } else {
-            refreshGallery();
+            // If we deleted the last item on the current page, go to previous page
+            if (imageStore.images.length === 0 && imageStore.pagination.currentPage > 1) {
+                changePage(imageStore.pagination.currentPage - 1);
+            } else {
+                refreshGallery();
+            }
+
+            showDeleteConfirm.value = false;
+            imageToDelete.value = null;
+        } catch (error) {
+            console.error('[GalleryIndex] confirmDelete: Error deleting image:', error);
+            // Show error to user using iziToast
+            if (window.iziToast) {
+                window.iziToast.error({
+                    title: 'Error',
+                    message: error.message || 'Failed to delete image',
+                    position: 'topRight'
+                });
+            }
+            // Keep the dialog open so user can try again or cancel
         }
-
-        showDeleteConfirm.value = false;
-        imageToDelete.value = null;
     }
 };
 
