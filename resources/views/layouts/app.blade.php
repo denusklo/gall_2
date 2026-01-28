@@ -128,6 +128,30 @@
 
                     <!-- Right Side Of Navbar -->
                     <ul class="navbar-nav ml-auto">
+                        <!-- Notification Bell (for authenticated users) -->
+                        @if (session()->has('verified_user_id') || Auth::check())
+                            <li class="nav-item dropdown">
+                                <a id="notificationBell" class="nav-link position-relative" href="#" role="button" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fas fa-bell" style="font-size: 1.25rem;"></i>
+                                    <span id="notificationBadge" class="badge badge-danger badge-pill position-absolute" style="top: 0; right: -5px; display: none;">0</span>
+                                </a>
+                                <div id="notificationDropdown" class="dropdown-menu dropdown-menu-right" style="min-width: 350px; max-width: 400px;">
+                                    <div class="dropdown-header d-flex justify-content-between align-items-center">
+                                        <span><strong>Notifications</strong></span>
+                                        <button id="markAllAsRead" class="btn btn-sm btn-link p-0">Mark all as read</button>
+                                    </div>
+                                    <div class="dropdown-divider"></div>
+                                    <div id="notificationList" style="max-height: 400px; overflow-y: auto;">
+                                        <!-- Notifications will be rendered here -->
+                                        <div class="dropdown-item text-center text-muted py-3">
+                                            <i class="fas fa-spinner fa-spin"></i>
+                                            <p class="mb-0 mt-2">Loading...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                        @endif
+
                         <!-- Authentication Links -->
                         @guest
                             @if (!session()->has('verified_user_id'))
@@ -249,6 +273,7 @@
     {{-- FCM Service - Load for all authenticated users --}}
     @if(session()->has('verified_user_id') || Auth::check())
         <script src="{{ mix('js/fcm.js') }}"></script>
+        <script src="{{ mix('js/notifications.js') }}"></script>
     @endif
 
     @yield('scripts')

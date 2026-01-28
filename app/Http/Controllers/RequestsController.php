@@ -380,32 +380,20 @@ class RequestsController extends Controller
 
             // Send FCM Notifications
             $fcmNotification = app(\App\Services\FcmNotificationService::class);
-            $fcmTokenService = app(\App\Services\FcmTokenService::class);
 
-            // Get creator's FCM token
-            $creatorToken = $fcmTokenService->getPrimaryToken($createdBy);
-
-            // Get completer's FCM token
-            $completerToken = $fcmTokenService->getPrimaryToken($currentUserId);
-
+            // Use Firebase UIDs directly (notifications will be saved to DB and sent to all devices)
             if ($isFullyCompleted) {
                 // Request fully completed
                 if ($allowMultiple) {
                     // Multi-completer fully completed
-                    if ($creatorToken) {
-                        $fcmNotification->notifyFullyCompleted($creatorToken, $requestName, count($completers));
-                    }
+                    $fcmNotification->notifyFullyCompleted($createdBy, $requestName, count($completers));
                 } else {
                     // Single completer completed
-                    if ($creatorToken) {
-                        $fcmNotification->notifyRequestCompleted($creatorToken, $requestName, $completerName);
-                    }
+                    $fcmNotification->notifyRequestCompleted($createdBy, $requestName, $completerName);
                 }
 
                 // Notify completer of full completion
-                if ($completerToken) {
-                    $fcmNotification->notifyCompletionConfirmation($completerToken, $requestName, count($completers), $requiredCompleters);
-                }
+                $fcmNotification->notifyCompletionConfirmation($currentUserId, $requestName, count($completers), $requiredCompleters);
 
                 return redirect()->route('requests.all')
                     ->with('success', "Request '{$requestName}' has been fully completed! ({$requiredCompleters}/{$requiredCompleters})");
@@ -415,14 +403,12 @@ class RequestsController extends Controller
                 $completedCount = count($completers);
 
                 // Notify creator of new completion
-                if ($creatorToken && $allowMultiple) {
-                    $fcmNotification->notifyNewCompletion($creatorToken, $requestName, $completedCount, $requiredCompleters, $completerName);
+                if ($allowMultiple) {
+                    $fcmNotification->notifyNewCompletion($createdBy, $requestName, $completedCount, $requiredCompleters, $completerName);
                 }
 
                 // Notify completer
-                if ($completerToken) {
-                    $fcmNotification->notifyCompletionConfirmation($completerToken, $requestName, $completedCount, $requiredCompleters);
-                }
+                $fcmNotification->notifyCompletionConfirmation($currentUserId, $requestName, $completedCount, $requiredCompleters);
 
                 return redirect()->route('requests.all')
                     ->with('success', "You've completed '{$requestName}'! ({$completedCount}/{$requiredCompleters} completed, {$remaining} more needed)");

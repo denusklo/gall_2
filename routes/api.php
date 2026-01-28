@@ -91,6 +91,15 @@ Route::prefix('_1')->group(function () {
             Route::get('/tokens', [FcmController::class, 'getTokens']);
             Route::post('/test', [FcmController::class, 'testNotification']);
         });
+
+        // Notifications routes
+        Route::prefix('notifications')->group(function() {
+            Route::get('/', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+            Route::get('/unread-count', [\App\Http\Controllers\Api\NotificationController::class, 'unreadCount']);
+            Route::put('/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
+            Route::put('/read-all', [\App\Http\Controllers\Api\NotificationController::class, 'markAllAsRead']);
+            Route::delete('/{id}', [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
+        });
     });
 
     Route::get('config/supabase-url', function () {

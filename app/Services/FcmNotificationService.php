@@ -6,6 +6,7 @@ use Kreait\Firebase\Messaging\CloudMessage;
 use Kreait\Firebase\Messaging\Notification as FirebaseNotification;
 use Kreait\Firebase\Messaging\WebPushConfig;
 use Illuminate\Support\Facades\Log;
+use App\Models\Notification;
 
 class FcmNotificationService
 {
@@ -14,6 +15,84 @@ class FcmNotificationService
     public function __construct()
     {
         $this->messaging = app('firebase.messaging');
+    }
+
+    /**
+     * Save notification to database for a user
+     *
+     * @param string $firebaseUid Firebase UID
+     * @param int|null $userId MySQL user ID (optional)
+     * @param string $title Notification title
+     * @param string $body Notification body
+     * @param string $type Notification type
+     * @param array $data Additional data
+     * @return Notification
+     */
+    protected function saveNotification($firebaseUid, $userId, $title, $body, $type = 'info', $data = [])
+    {
+        return Notification::create([
+            'user_id' => $userId,
+            'firebase_uid' => $firebaseUid,
+            'type' => $type,
+            'title' => $title,
+            'body' => $body,
+            'data' => $data
+        ]);
+    }
+
+    /**
+     * Send notification to a user (by Firebase UID)
+     *
+     * @param string $firebaseUid Firebase UID
+     * @param string $title Notification title
+     * @param string $body Notification body
+     * @param string $type Notification type (info, success, warning, error)
+     * @param array $data Additional data payload
+     * @return bool
+     */
+    public function sendToUser($firebaseUid, $title, $body, $type = 'info', $data = [])
+    {
+        try {
+            // Get user by Firebase UID
+            $user = \App\Models\User::where('firebase_uid', $firebaseUid)->first();
+
+            // Save notification to database (persists even if FCM fails or user offline)
+            $this->saveNotification($firebaseUid, $user?->id, $title, $body, $type, $data);
+
+            // Get FCM tokens for this user
+            $fcmTokenService = app(FcmTokenService::class);
+            $tokens = $fcmTokenService->getUserTokens($firebaseUid);
+
+            if (empty($tokens)) {
+                Log::info('No FCM tokens found for user, notification saved to DB only', [
+                    'firebase_uid' => $firebaseUid
+                ]);
+                return true; // Still success since saved to DB
+            }
+
+            // Send FCM notification to all user's devices
+            $notification = FirebaseNotification::create($title, $body);
+            $message = CloudMessage::new()
+                ->withNotification($notification)
+                ->withData(array_merge($data, ['type' => $type]));
+
+            $result = $this->messaging->sendMulticast($message, $tokens);
+
+            Log::info('FCM notification sent to user', [
+                'firebase_uid' => $firebaseUid,
+                'success' => $result->successes()->count(),
+                'failures' => $result->failures()->count(),
+                'title' => $title
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Failed to send notification to user', [
+                'firebase_uid' => $firebaseUid,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
     }
 
     /**
@@ -135,17 +214,18 @@ class FcmNotificationService
      * Core notification: Request completed (single completer)
      * Sent to request creator when their single-completer request is completed
      *
-     * @param string $token FCM token of request creator
+     * @param string $firebaseUid Firebase UID of request creator
      * @param string $requestName Name of the request
      * @param string $completerName Name of person who completed
      * @return bool
      */
-    public function notifyRequestCompleted($token, $requestName, $completerName = 'Someone')
+    public function notifyRequestCompleted($firebaseUid, $requestName, $completerName = 'Someone')
     {
-        return $this->sendToToken(
-            $token,
+        return $this->sendToUser(
+            $firebaseUid,
             'Request Completed! 🎉',
             "\"{$requestName}\" has been completed by {$completerName}",
+            'success',
             [
                 'type' => 'request_completed',
                 'request_name' => $requestName,
@@ -158,19 +238,20 @@ class FcmNotificationService
      * Core notification: New completion received (multi-completer)
      * Sent to request creator when someone completes their multi-completer request
      *
-     * @param string $token FCM token of request creator
+     * @param string $firebaseUid Firebase UID of request creator
      * @param string $requestName Name of the request
      * @param int $completedCount Number of people completed
      * @param int $requiredCount Total required
      * @param string $completerName Name of person who just completed
      * @return bool
      */
-    public function notifyNewCompletion($token, $requestName, $completedCount, $requiredCount, $completerName = 'Someone')
+    public function notifyNewCompletion($firebaseUid, $requestName, $completedCount, $requiredCount, $completerName = 'Someone')
     {
-        return $this->sendToToken(
-            $token,
+        return $this->sendToUser(
+            $firebaseUid,
             'New Progress on Your Request 📈',
             "\"{$requestName}\" has {$completedCount}/{$requiredCount} completions. {$completerName} just helped!",
+            'info',
             [
                 'type' => 'new_completion',
                 'request_name' => $requestName,
@@ -185,17 +266,18 @@ class FcmNotificationService
      * Core notification: Fully completed (multi-completer)
      * Sent to request creator when multi-completer request reaches required number
      *
-     * @param string $token FCM token of request creator
+     * @param string $firebaseUid Firebase UID of request creator
      * @param string $requestName Name of the request
      * @param int $totalCompleters Total number of completers
      * @return bool
      */
-    public function notifyFullyCompleted($token, $requestName, $totalCompleters)
+    public function notifyFullyCompleted($firebaseUid, $requestName, $totalCompleters)
     {
-        return $this->sendToToken(
-            $token,
+        return $this->sendToUser(
+            $firebaseUid,
             'Request Fully Completed! ✅',
             "\"{$requestName}\" is now complete! {$totalCompleters} people have responded.",
+            'success',
             [
                 'type' => 'fully_completed',
                 'request_name' => $requestName,
@@ -208,20 +290,21 @@ class FcmNotificationService
      * Core notification: Completion confirmation
      * Sent to completer after they complete a request
      *
-     * @param string $token FCM token of completer
+     * @param string $firebaseUid Firebase UID of completer
      * @param string $requestName Name of the request
      * @param int $completedCount Current number of completions
      * @param int $requiredCount Total required (0 for single-completer)
      * @return bool
      */
-    public function notifyCompletionConfirmation($token, $requestName, $completedCount, $requiredCount)
+    public function notifyCompletionConfirmation($firebaseUid, $requestName, $completedCount, $requiredCount)
     {
         if ($requiredCount <= 1) {
             // Single completer
-            return $this->sendToToken(
-                $token,
+            return $this->sendToUser(
+                $firebaseUid,
                 'Thank You! 💪',
                 "You've completed \"{$requestName}\". Great job!",
+                'success',
                 [
                     'type' => 'completion_confirmation',
                     'request_name' => $requestName
@@ -229,10 +312,11 @@ class FcmNotificationService
             );
         } else {
             // Multi completer
-            return $this->sendToToken(
-                $token,
+            return $this->sendToUser(
+                $firebaseUid,
                 'Thanks for Helping! 🙏',
                 "You've completed \"{$requestName}\" ({$completedCount}/{$requiredCount} people).",
+                'success',
                 [
                     'type' => 'completion_confirmation',
                     'request_name' => $requestName,
