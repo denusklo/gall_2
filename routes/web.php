@@ -46,10 +46,33 @@ Route::middleware(['auth'])->group(function () {
     })->name('galleries.index');
 });
 
-Route::middleware('auth')->get('/apiv/_1/token', function (Request $request) {
-    return response()->json([
-        'token' => session('api_token') ?? $request->user()->createToken('auth-token')->plainTextToken
-    ]);
+Route::middleware(\App\Http\Middleware\UnifiedAuthMiddleware::class)->get('/apiv/_1/token', function (Request $request) {
+    $user = $request->user();
+    $currentFirebaseUid = session('verified_user_id');
+
+    // Check if we have a cached token and if it's still valid for the current Firebase user
+    $cachedTokenUid = session('api_token_firebase_uid');
+
+    // Regenerate token if:
+    // 1. No cached token exists
+    // 2. Firebase user has changed (current Firebase UID != cached token's Firebase UID)
+    // 3. User doesn't match the expected Firebase UID
+    $shouldRegenerate = !session('api_token') ||
+                        $cachedTokenUid !== $currentFirebaseUid ||
+                        ($currentFirebaseUid && $user->firebase_uid !== $currentFirebaseUid);
+
+    if ($shouldRegenerate) {
+        // Revoke all existing tokens for this user to prevent stale token usage
+        $user->tokens()->delete();
+        $token = $user->createToken('auth-token')->plainTextToken;
+
+        // Cache the new token and associated Firebase UID in session
+        session(['api_token' => $token, 'api_token_firebase_uid' => $currentFirebaseUid]);
+    } else {
+        $token = session('api_token');
+    }
+
+    return response()->json(['token' => $token]);
 });
 
 Route::middleware(['guest'])->prefix('mysql')->as('mysql.')->group(function () {

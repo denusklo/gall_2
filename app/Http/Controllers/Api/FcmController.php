@@ -29,56 +29,14 @@ class FcmController extends Controller
             'device_info' => 'nullable|string|max:255'
         ]);
 
-        // Get Firebase UID from session or use authenticated user's firebase_uid
-        $uid = session()->get('verified_user_id');
         $user = $request->user();
-
-        // If no Firebase session, check if Sanctum user has firebase_uid
-        if (!$uid && $user) {
-            $uid = $user->firebase_uid;
-
-            // If Sanctum user doesn't have firebase_uid, create Firebase user
-            if (!$uid) {
-                try {
-                    $auth = app('firebase.auth');
-
-                    // Create Firebase user with same email
-                    $firebaseUser = $auth->createUser([
-                        'email' => $user->email,
-                        'displayName' => $user->name,
-                        'emailVerified' => $user->email_verified_at !== null,
-                    ]);
-
-                    $uid = $firebaseUser->uid;
-
-                    // Update MySQL user with firebase_uid
-                    $user->firebase_uid = $uid;
-                    $user->auth_provider = $user->auth_provider === 'sanctum' ? 'both' : $user->auth_provider;
-                    $user->save();
-
-                    Log::info('Created Firebase user for Sanctum-only user', [
-                        'user_id' => $user->id,
-                        'firebase_uid' => $uid
-                    ]);
-                } catch (\Exception $e) {
-                    Log::error('Failed to create Firebase user for FCM', [
-                        'user_id' => $user->id,
-                        'error' => $e->getMessage()
-                    ]);
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Failed to initialize Firebase for user: ' . $e->getMessage()
-                    ], 500);
-                }
-            }
-        }
+        $uid = $user->firebase_uid;
 
         if (!$uid) {
             return response()->json([
                 'success' => false,
-                'message' => 'User not authenticated'
-            ], 401);
+                'message' => 'User does not have Firebase UID. Please authenticate via Firebase.'
+            ], 400);
         }
 
         $token = $request->input('token');
@@ -111,17 +69,13 @@ class FcmController extends Controller
             'token' => 'required|string'
         ]);
 
-        $uid = session()->get('verified_user_id');
-
-        if (!$uid && $request->user()) {
-            $uid = $request->user()->firebase_uid;
-        }
+        $uid = $request->user()->firebase_uid;
 
         if (!$uid) {
             return response()->json([
                 'success' => false,
-                'message' => 'User not authenticated or Firebase UID not found'
-            ], 401);
+                'message' => 'User does not have Firebase UID'
+            ], 400);
         }
 
         $result = $this->fcmTokenService->removeToken($uid, $request->input('token'));
@@ -147,17 +101,13 @@ class FcmController extends Controller
      */
     public function getTokens(Request $request)
     {
-        $uid = session()->get('verified_user_id');
-
-        if (!$uid && $request->user()) {
-            $uid = $request->user()->firebase_uid;
-        }
+        $uid = $request->user()->firebase_uid;
 
         if (!$uid) {
             return response()->json([
                 'success' => false,
-                'message' => 'User not authenticated or Firebase UID not found'
-            ], 401);
+                'message' => 'User does not have Firebase UID'
+            ], 400);
         }
 
         $tokens = $this->fcmTokenService->getUserTokens($uid);

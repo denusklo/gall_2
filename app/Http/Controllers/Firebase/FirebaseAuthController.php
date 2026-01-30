@@ -135,9 +135,14 @@ class FirebaseAuthController extends Controller
 
     public function logout(Request $request)
     {
+        // Clear Firebase session data
         session()->forget('verified_user_id');
         session()->forget('idTokenString');
         session()->forget('displayName');
+
+        // Clear cached API token to prevent cross-user access
+        session()->forget('api_token');
+        session()->forget('api_token_firebase_uid');
 
         if (isset($_SESSION['expiry_status'])) {
             session()->flash('error', "Session Expired");

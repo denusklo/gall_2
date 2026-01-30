@@ -6,7 +6,7 @@ use App\Services\UserSyncService;
 use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
-use Kreait\Firebase\Auth;
+use Kreait\Firebase\Auth as FirebaseAuth;
 use Firebase\Auth\Token\Exception\InvalidToken;
 
 class UnifiedAuthMiddleware
