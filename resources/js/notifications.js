@@ -5,8 +5,6 @@
 
 const NotificationService = {
     notifications: [],
-    unreadCount: 0,
-    pollInterval: null,
     tokenRefreshed: false,
 
     async init() {
@@ -16,7 +14,7 @@ const NotificationService = {
         this.setupEventListeners();
         this.fetchNotifications();
         this.fetchUnreadCount();
-        this.startPolling();
+        // Polling removed - relying on real-time FCM updates instead
     },
 
     async ensureValidToken() {
@@ -135,7 +133,8 @@ const NotificationService = {
 
             if (response.ok) {
                 const data = await response.json();
-                this.unreadCount = data.count;
+                // Note: We no longer store unreadCount separately
+                // Badge is calculated dynamically from notifications array
                 this.updateBadge();
             }
         } catch (error) {
@@ -150,11 +149,20 @@ const NotificationService = {
             });
 
             if (response.ok) {
-                this.fetchNotifications();
-                this.fetchUnreadCount();
+                // Update locally instead of refetching
+                this.markAsReadLocally(id);
             }
         } catch (error) {
             console.error('Failed to mark notification as read:', error);
+        }
+    },
+
+    markAsReadLocally(id) {
+        const notification = this.notifications.find(n => n.id === id);
+        if (notification) {
+            notification.read_at = new Date().toISOString();
+            this.renderNotifications();
+            this.updateBadge();
         }
     },
 
@@ -165,8 +173,12 @@ const NotificationService = {
             });
 
             if (response.ok) {
-                this.fetchNotifications();
-                this.fetchUnreadCount();
+                // Update locally instead of refetching
+                this.notifications.forEach(n => {
+                    if (!n.read_at) n.read_at = new Date().toISOString();
+                });
+                this.updateBadge();
+                this.renderNotifications();
             }
         } catch (error) {
             console.error('Failed to mark all as read:', error);
@@ -180,8 +192,14 @@ const NotificationService = {
             });
 
             if (response.ok) {
-                this.fetchNotifications();
-                this.fetchUnreadCount();
+                // Update locally instead of refetching
+                const notif = this.notifications.find(n => n.id === id);
+                const wasUnread = !notif?.read_at;
+                this.notifications = this.notifications.filter(n => n.id !== id);
+                if (wasUnread) {
+                    this.updateBadge();
+                }
+                this.renderNotifications();
             }
         } catch (error) {
             console.error('Failed to delete notification:', error);
@@ -191,8 +209,10 @@ const NotificationService = {
     updateBadge() {
         const badge = document.getElementById('notificationBadge');
         if (badge) {
-            if (this.unreadCount > 0) {
-                badge.textContent = this.unreadCount > 99 ? '99+' : this.unreadCount;
+            // Calculate unread count from local notifications
+            const unreadCount = this.notifications.filter(n => !n.read_at).length;
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
                 badge.style.display = 'inline-block';
             } else {
                 badge.style.display = 'none';
@@ -220,22 +240,32 @@ const NotificationService = {
             const typeIcon = this.getTypeIcon(notif.type);
 
             return `
-                <div class="dropdown-item notification-item ${isUnread ? 'unread' : ''}"
+                <div class="notification-item ${isUnread ? 'unread' : ''}"
                      data-id="${notif.id}"
-                     style="cursor: pointer; border-left: 3px solid ${this.getTypeColor(notif.type)};">
+                     style="cursor: pointer; border-left: 3px solid ${this.getTypeColor(notif.type)}; padding: 0.75rem 1rem;">
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="flex-grow-1" onclick="NotificationService.handleNotificationClick(${notif.id}, '${notif.data?.type || ''}')">
                             <div class="d-flex align-items-center mb-1">
-                                <i class="${typeIcon} mr-2"></i>
-                                <strong>${notif.title}</strong>
+                                <i class="${typeIcon} mr-2" style="color: inherit;"></i>
+                                <strong style="color: #212529;">${notif.title}</strong>
                             </div>
-                            <p class="mb-1 small">${notif.body || ''}</p>
-                            <small class="text-muted">${timeAgo}</small>
+                            <p class="mb-1 small" style="color: #6c757d;">${notif.body || ''}</p>
+                            <small style="color: #6c757d;">${timeAgo}</small>
                         </div>
-                        <button class="btn btn-sm btn-link text-danger p-0 ml-2"
-                                onclick="event.stopPropagation(); NotificationService.deleteNotification(${notif.id})">
-                            <i class="fas fa-times"></i>
-                        </button>
+                        <div class="d-flex align-items-center">
+                            ${isUnread ? `
+                                <button class="btn btn-sm btn-link text-success p-0 ml-2"
+                                        onclick="event.stopPropagation(); NotificationService.markAsRead(${notif.id})"
+                                        title="Mark as read">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                            ` : ''}
+                            <button class="btn btn-sm btn-link text-muted p-0 ml-2"
+                                    onclick="event.stopPropagation(); NotificationService.deleteNotification(${notif.id})"
+                                    title="Delete">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -243,25 +273,8 @@ const NotificationService = {
     },
 
     handleNotificationClick(id, type) {
-        // Mark as read
+        // Just mark as read without redirecting
         this.markAsRead(id);
-
-        // Navigate based on type
-        let url = '/requests/my';
-        switch (type) {
-            case 'request_completed':
-            case 'new_completion':
-            case 'fully_completed':
-                url = '/requests/my';
-                break;
-            case 'completion_confirmation':
-                url = '/requests/all';
-                break;
-            default:
-                url = '/requests/my';
-        }
-
-        window.location.href = url;
     },
 
     getTypeIcon(type) {
@@ -306,19 +319,6 @@ const NotificationService = {
         }
 
         return 'Just now';
-    },
-
-    startPolling() {
-        // Poll every 30 seconds
-        this.pollInterval = setInterval(() => {
-            this.fetchUnreadCount();
-        }, 30000);
-    },
-
-    stopPolling() {
-        if (this.pollInterval) {
-            clearInterval(this.pollInterval);
-        }
     }
 };
 

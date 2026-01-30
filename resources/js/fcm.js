@@ -273,6 +273,13 @@ const FcmService = {
             const data = payload.data || {};
 
             if (notification) {
+                // Immediately update notification badge and list
+                // This ensures the badge updates in real-time when user is on page
+                if (window.NotificationService) {
+                    window.NotificationService.fetchUnreadCount();
+                    window.NotificationService.fetchNotifications();
+                }
+
                 // Show in-app notification using iziToast
                 iziToast.info({
                     title: notification.title || 'Notification',
