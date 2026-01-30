@@ -79,7 +79,6 @@ Route::prefix('_1')->group(function () {
             return response()->json([
                 'authenticated' => true,
                 'user' => $request->user(),
-                'session_uid' => session()->get('verified_user_id'),
                 'firebase_uid' => $request->user()->firebase_uid ?? null
             ]);
         });

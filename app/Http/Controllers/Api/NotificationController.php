@@ -20,7 +20,7 @@ class NotificationController extends Controller
 
         // Get user identifier (user_id or firebase_uid)
         $userId = $user->id;
-        $firebaseUid = $user->firebase_uid ?? session()->get('verified_user_id');
+        $firebaseUid = $user->firebase_uid;
 
         $perPage = $request->input('per_page', 15);
         $unreadOnly = $request->boolean('unread_only', false);
@@ -53,7 +53,7 @@ class NotificationController extends Controller
     {
         $user = $request->user();
         $userId = $user->id;
-        $firebaseUid = $user->firebase_uid ?? session()->get('verified_user_id');
+        $firebaseUid = $user->firebase_uid;
 
         $count = Notification::query()
             ->where(function ($q) use ($userId, $firebaseUid) {
@@ -79,7 +79,7 @@ class NotificationController extends Controller
     {
         $user = $request->user();
         $userId = $user->id;
-        $firebaseUid = $user->firebase_uid ?? session()->get('verified_user_id');
+        $firebaseUid = $user->firebase_uid;
 
         $notification = Notification::query()
             ->where('id', $id)
@@ -110,7 +110,7 @@ class NotificationController extends Controller
     {
         $user = $request->user();
         $userId = $user->id;
-        $firebaseUid = $user->firebase_uid ?? session()->get('verified_user_id');
+        $firebaseUid = $user->firebase_uid;
 
         $updated = Notification::query()
             ->where(function ($q) use ($userId, $firebaseUid) {
@@ -140,7 +140,7 @@ class NotificationController extends Controller
     {
         $user = $request->user();
         $userId = $user->id;
-        $firebaseUid = $user->firebase_uid ?? session()->get('verified_user_id');
+        $firebaseUid = $user->firebase_uid;
 
         $notification = Notification::query()
             ->where('id', $id)

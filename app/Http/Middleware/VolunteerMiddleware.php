@@ -19,7 +19,7 @@ class VolunteerMiddleware
         $uid = session()->get('verified_user_id');
 
         if (!$uid) {
-            return redirect()->route('firebase.login.form')
+            return redirect()->route('login')
                 ->with('error', 'Please login to access this page.');
         }
 
@@ -38,7 +38,7 @@ class VolunteerMiddleware
             }
 
         } catch (\Exception $e) {
-            return redirect()->route('firebase.login.form')
+            return redirect()->route('login')
                 ->with('error', 'Authentication error. Please login again.');
         }
 
