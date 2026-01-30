@@ -12,12 +12,21 @@
     padding: 0.75rem 1rem;
     transition: background-color 0.2s;
 
-    &:hover {
+    &:hover,
+    &:focus,
+    &:active {
         background-color: #f8f9fa;
     }
 
     &.unread {
         background-color: #f0f7ff;
+    }
+
+    // Prevent Bootstrap dropdown-item from changing text color on hover/active/focus
+    &, &:hover, &:focus, &:active {
+        strong, p, small, i {
+            color: inherit !important;
+        }
     }
 
     .btn-link {

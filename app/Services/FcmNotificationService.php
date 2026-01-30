@@ -71,17 +71,35 @@ class FcmNotificationService
             }
 
             // Send FCM notification to all user's devices
+            // Note: Using individual send() instead of sendMulticast() due to
+            // Google deprecating the /batch endpoint that sendMulticast() uses
             $notification = FirebaseNotification::create($title, $body);
-            $message = CloudMessage::new()
-                ->withNotification($notification)
-                ->withData(array_merge($data, ['type' => $type]));
 
-            $result = $this->messaging->sendMulticast($message, $tokens);
+            $successCount = 0;
+            $failCount = 0;
+
+            foreach ($tokens as $token) {
+                try {
+                    $targetedMessage = CloudMessage::withTarget('token', $token)
+                        ->withNotification($notification)
+                        ->withData(array_merge($data, ['type' => $type]));
+
+                    $this->messaging->send($targetedMessage);
+                    $successCount++;
+                } catch (\Exception $e) {
+                    $failCount++;
+                    Log::warning('Failed to send to specific token', [
+                        'token' => substr($token, 0, 20) . '...',
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
 
             Log::info('FCM notification sent to user', [
                 'firebase_uid' => $firebaseUid,
-                'success' => $result->successes()->count(),
-                'failures' => $result->failures()->count(),
+                'success' => $successCount,
+                'failures' => $failCount,
+                'total_tokens' => count($tokens),
                 'title' => $title
             ]);
 
