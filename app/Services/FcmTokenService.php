@@ -25,6 +25,10 @@ class FcmTokenService
     public function storeToken($uid, $token, $deviceInfo = null)
     {
         try {
+            // CRITICAL FIX: Remove this token from ALL other users first
+            // This prevents tokens from being registered to multiple users
+            $this->removeTokenFromAllOtherUsers($uid, $token);
+
             $reference = $this->database->getReference("users/{$uid}/fcm_tokens/{$this->sanitizeTokenKey($token)}");
 
             $data = [
@@ -50,6 +54,53 @@ class FcmTokenService
                 'error' => $e->getMessage()
             ]);
             return false;
+        }
+    }
+
+    /**
+     * Remove an FCM token from all users EXCEPT the specified user
+     * This prevents duplicate token registrations across users
+     *
+     * @param string $currentUid Current user's Firebase UID (to keep)
+     * @param string $token FCM token to remove from others
+     * @return void
+     */
+    protected function removeTokenFromAllOtherUsers($currentUid, $token)
+    {
+        try {
+            // Get all users from the database
+            $usersRef = $this->database->getReference('users');
+            $snapshot = $usersRef->getSnapshot();
+
+            if (!$snapshot->exists()) {
+                return;
+            }
+
+            $allUsers = $snapshot->getValue();
+            $tokenKey = $this->sanitizeTokenKey($token);
+
+            foreach ($allUsers as $uid => $userData) {
+                // Skip the current user
+                if ($uid === $currentUid) {
+                    continue;
+                }
+
+                // Check if this user has FCM tokens
+                if (isset($userData['fcm_tokens']) && isset($userData['fcm_tokens'][$tokenKey])) {
+                    // Remove the token from this user
+                    $this->database->getReference("users/{$uid}/fcm_tokens/{$tokenKey}")->remove();
+
+                    Log::info('FCM token removed from other user', [
+                        'from_uid' => $uid,
+                        'token' => substr($token, 0, 20) . '...'
+                    ]);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to remove token from other users', [
+                'current_uid' => $currentUid,
+                'error' => $e->getMessage()
+            ]);
         }
     }
 

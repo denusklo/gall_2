@@ -265,39 +265,132 @@ const FcmService = {
      * Setup foreground message handler
      */
     setupMessageHandler() {
-        this.messaging.onMessage((payload) => {
-            console.log('FCM message received:', payload);
+        // Detect browser
+        const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+        const isChrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+
+        console.log('[FCM] Setting up message handler...');
+        console.log('[FCM] Browser: Firefox=' + isFirefox + ', Chrome=' + isChrome);
+        console.log('[FCM] User Agent:', navigator.userAgent);
+
+        if (isFirefox) {
+            console.warn('[FCM] Firefox detected - FCM may have limited support');
+        }
+
+        this.messaging.onMessage(async (payload) => {
+            console.log('[FCM] ==================================');
+            console.log('[FCM] Message received!', payload);
+            console.log('[FCM] Notification:', payload.notification);
+            console.log('[FCM] Data:', payload.data);
+            console.log('[FCM] ==================================');
+
+            // Verify the notification is for the current user
+            const isForCurrentUser = await this.verifyNotificationRecipient(payload);
+
+            if (!isForCurrentUser) {
+                console.warn('[FCM] Notification not for current user, ignoring');
+                return;
+            }
+
+            console.log('[FCM] Notification verified for current user, displaying...');
 
             // Show notification in foreground
             const notification = payload.notification;
             const data = payload.data || {};
 
             if (notification) {
+                console.log('[FCM] Showing notification toast...');
+
                 // Immediately update notification badge and list
                 // This ensures the badge updates in real-time when user is on page
                 if (window.NotificationService) {
+                    console.log('[FCM] Updating notification service...');
                     window.NotificationService.fetchUnreadCount();
                     window.NotificationService.fetchNotifications();
                 }
 
                 // Show in-app notification using iziToast
-                iziToast.info({
-                    title: notification.title || 'Notification',
-                    message: notification.body || '',
-                    position: 'topRight',
-                    timeout: 5000,
-                    buttons: [
-                        ['<button>View</button>', (instance, toast) => {
-                            // Handle notification click based on type
-                            this.handleNotificationClick(data);
-                            instance.hide({
-                                transitionOut: 'fadeOutUp'
-                            }, toast, 'buttonName');
-                        }, true]
-                    ]
-                });
+                if (typeof iziToast !== 'undefined') {
+                    console.log('[FCM] Calling iziToast.info()...');
+                    iziToast.info({
+                        title: notification.title || 'Notification',
+                        message: notification.body || '',
+                        position: 'topRight',
+                        timeout: 5000,
+                        buttons: [
+                            ['<button>View</button>', (instance, toast) => {
+                                // Handle notification click based on type
+                                this.handleNotificationClick(data);
+                                instance.hide({
+                                    transitionOut: 'fadeOutUp'
+                                }, toast, 'buttonName');
+                            }, true]
+                        ]
+                    });
+                    console.log('[FCM] iziToast.info() called successfully');
+                } else {
+                    console.error('[FCM] iziToast is not defined!');
+                }
+            } else {
+                console.warn('[FCM] No notification object in payload');
             }
         });
+
+        console.log('[FCM] Message handler setup complete');
+    },
+
+    /**
+     * Verify the FCM notification is for the currently logged-in user
+     * This prevents users from seeing notifications meant for other users
+     * when sharing the same browser/device
+     */
+    async verifyNotificationRecipient(payload) {
+        try {
+            // Get current user's Firebase UID
+            const response = await fetch('/apiv/_1/test-auth', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem(this.getApiKey())}`,
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                return false;
+            }
+
+            const data = await response.json();
+            const currentFirebaseUid = data.firebase_uid;
+
+            if (!currentFirebaseUid) {
+                return false;
+            }
+
+            // Check if we have the last known Firebase UID stored
+            const lastKnownUid = localStorage.getItem('fcm_last_firebase_uid');
+
+            // If the Firebase UID has changed, re-register the FCM token
+            if (lastKnownUid !== currentFirebaseUid) {
+                console.log('[FCM] User changed, re-registering FCM token:', {
+                    old: lastKnownUid,
+                    new: currentFirebaseUid
+                });
+
+                // Update the stored UID
+                localStorage.setItem('fcm_last_firebase_uid', currentFirebaseUid);
+
+                // Re-register the FCM token with the new user
+                if (this.token) {
+                    await this.registerTokenWithServer(this.token);
+                }
+            }
+
+            // The notification is valid since we're authenticated
+            return true;
+
+        } catch (error) {
+            console.error('[FCM] Error verifying notification recipient:', error);
+            return true; // Show notification if verification fails
+        }
     },
 
     /**

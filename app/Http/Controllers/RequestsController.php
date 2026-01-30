@@ -344,6 +344,16 @@ class RequestsController extends Controller
 
             // Check if this is own request
             $createdBy = $requestData['created_by'] ?? $userId;
+
+            // DEBUG: Log notification targets
+            \Log::info('Request completion debug', [
+                'url_user_id' => $userId,
+                'session_current_user_id' => $currentUserId,
+                'firebase_created_by' => $requestData['created_by'] ?? 'NOT SET',
+                'final_created_by' => $createdBy,
+                'request_name' => $requestData['name'] ?? 'Unknown',
+            ]);
+
             if ($createdBy === $currentUserId) {
                 return redirect()->route('requests.all')
                     ->with('warning', 'You cannot complete your own request.');

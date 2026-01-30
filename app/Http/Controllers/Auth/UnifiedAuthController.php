@@ -278,6 +278,7 @@ class UnifiedAuthController extends Controller
         session()->forget('idTokenString');
         session()->forget('displayName');
         session()->forget('api_token');
+        session()->forget('api_token_firebase_uid');
 
         // Revoke Sanctum tokens
         if ($user) {
