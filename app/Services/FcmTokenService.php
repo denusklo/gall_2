@@ -20,9 +20,10 @@ class FcmTokenService
      * @param string $uid User's Firebase UID
      * @param string $token FCM device token
      * @param string $deviceInfo Optional device information
+     * @param string $domain Optional domain (origin) where token was registered
      * @return bool
      */
-    public function storeToken($uid, $token, $deviceInfo = null)
+    public function storeToken($uid, $token, $deviceInfo = null, $domain = null)
     {
         try {
             // CRITICAL FIX: Remove this token from ALL other users first
@@ -40,10 +41,15 @@ class FcmTokenService
                 $data['device_info'] = $deviceInfo;
             }
 
+            if ($domain) {
+                $data['domain'] = $domain;
+            }
+
             $reference->set($data);
 
             Log::info('FCM token stored', [
                 'uid' => $uid,
+                'domain' => $domain,
                 'token' => substr($token, 0, 20) . '...'
             ]);
 
@@ -133,6 +139,54 @@ class FcmTokenService
         } catch (\Exception $e) {
             Log::error('Failed to get user FCM tokens', [
                 'uid' => $uid,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Get FCM tokens for a user filtered by domain
+     *
+     * @param string $uid User's Firebase UID
+     * @param string $domain Domain to filter by (e.g., https://example.com)
+     * @return array Array of tokens matching the domain
+     */
+    public function getUserTokensForDomain($uid, $domain)
+    {
+        try {
+            $reference = $this->database->getReference("users/{$uid}/fcm_tokens");
+            $snapshot = $reference->getSnapshot();
+
+            if (!$snapshot->exists()) {
+                return [];
+            }
+
+            $tokens = [];
+            $allData = $snapshot->getValue();
+
+            foreach ($allData as $key => $data) {
+                if (isset($data['token'])) {
+                    // Check if domain matches
+                    $tokenDomain = $data['domain'] ?? null;
+                    if ($tokenDomain === $domain) {
+                        $tokens[] = $data['token'];
+                    }
+                }
+            }
+
+            Log::info('FCM tokens filtered by domain', [
+                'uid' => $uid,
+                'domain' => $domain,
+                'token_count' => count($tokens),
+                'total_tokens' => count($allData)
+            ]);
+
+            return $tokens;
+        } catch (\Exception $e) {
+            Log::error('Failed to get user FCM tokens for domain', [
+                'uid' => $uid,
+                'domain' => $domain,
                 'error' => $e->getMessage()
             ]);
             return [];

@@ -26,7 +26,8 @@ class FcmController extends Controller
     {
         $request->validate([
             'token' => 'required|string',
-            'device_info' => 'nullable|string|max:255'
+            'device_info' => 'nullable|string|max:255',
+            'domain' => 'nullable|string|max:255'
         ]);
 
         $user = $request->user();
@@ -41,8 +42,9 @@ class FcmController extends Controller
 
         $token = $request->input('token');
         $deviceInfo = $request->input('device_info');
+        $domain = $request->input('domain');
 
-        $result = $this->fcmTokenService->storeToken($uid, $token, $deviceInfo);
+        $result = $this->fcmTokenService->storeToken($uid, $token, $deviceInfo, $domain);
 
         if ($result) {
             return response()->json([

@@ -48,9 +48,10 @@ class FcmNotificationService
      * @param string $body Notification body
      * @param string $type Notification type (info, success, warning, error)
      * @param array $data Additional data payload
+     * @param string|null $domain Optional domain to filter tokens (e.g., https://example.com)
      * @return bool
      */
-    public function sendToUser($firebaseUid, $title, $body, $type = 'info', $data = [])
+    public function sendToUser($firebaseUid, $title, $body, $type = 'info', $data = [], $domain = null)
     {
         try {
             // Get user by Firebase UID
@@ -61,11 +62,18 @@ class FcmNotificationService
 
             // Get FCM tokens for this user
             $fcmTokenService = app(FcmTokenService::class);
-            $tokens = $fcmTokenService->getUserTokens($firebaseUid);
+
+            // Filter by domain if provided
+            if ($domain) {
+                $tokens = $fcmTokenService->getUserTokensForDomain($firebaseUid, $domain);
+            } else {
+                $tokens = $fcmTokenService->getUserTokens($firebaseUid);
+            }
 
             if (empty($tokens)) {
                 Log::info('No FCM tokens found for user, notification saved to DB only', [
-                    'firebase_uid' => $firebaseUid
+                    'firebase_uid' => $firebaseUid,
+                    'domain' => $domain
                 ]);
                 return true; // Still success since saved to DB
             }
@@ -110,6 +118,7 @@ class FcmNotificationService
 
             Log::info('FCM notification sent to user', [
                 'firebase_uid' => $firebaseUid,
+                'domain' => $domain ?? 'all',
                 'success' => $successCount,
                 'failures' => $failCount,
                 'total_tokens' => count($tokens),
@@ -259,9 +268,10 @@ class FcmNotificationService
      * @param string $firebaseUid Firebase UID of request creator
      * @param string $requestName Name of the request
      * @param string $completerName Name of person who completed
+     * @param string|null $domain Optional domain to filter tokens
      * @return bool
      */
-    public function notifyRequestCompleted($firebaseUid, $requestName, $completerName = 'Someone')
+    public function notifyRequestCompleted($firebaseUid, $requestName, $completerName = 'Someone', $domain = null)
     {
         return $this->sendToUser(
             $firebaseUid,
@@ -272,7 +282,8 @@ class FcmNotificationService
                 'type' => 'request_completed',
                 'request_name' => $requestName,
                 'completer_name' => $completerName
-            ]
+            ],
+            $domain
         );
     }
 
@@ -285,9 +296,10 @@ class FcmNotificationService
      * @param int $completedCount Number of people completed
      * @param int $requiredCount Total required
      * @param string $completerName Name of person who just completed
+     * @param string|null $domain Optional domain to filter tokens
      * @return bool
      */
-    public function notifyNewCompletion($firebaseUid, $requestName, $completedCount, $requiredCount, $completerName = 'Someone')
+    public function notifyNewCompletion($firebaseUid, $requestName, $completedCount, $requiredCount, $completerName = 'Someone', $domain = null)
     {
         return $this->sendToUser(
             $firebaseUid,
@@ -300,7 +312,8 @@ class FcmNotificationService
                 'completed_count' => $completedCount,
                 'required_count' => $requiredCount,
                 'completer_name' => $completerName
-            ]
+            ],
+            $domain
         );
     }
 
@@ -311,9 +324,10 @@ class FcmNotificationService
      * @param string $firebaseUid Firebase UID of request creator
      * @param string $requestName Name of the request
      * @param int $totalCompleters Total number of completers
+     * @param string|null $domain Optional domain to filter tokens
      * @return bool
      */
-    public function notifyFullyCompleted($firebaseUid, $requestName, $totalCompleters)
+    public function notifyFullyCompleted($firebaseUid, $requestName, $totalCompleters, $domain = null)
     {
         return $this->sendToUser(
             $firebaseUid,
@@ -324,7 +338,8 @@ class FcmNotificationService
                 'type' => 'fully_completed',
                 'request_name' => $requestName,
                 'total_completers' => $totalCompleters
-            ]
+            ],
+            $domain
         );
     }
 
@@ -336,9 +351,10 @@ class FcmNotificationService
      * @param string $requestName Name of the request
      * @param int $completedCount Current number of completions
      * @param int $requiredCount Total required (0 for single-completer)
+     * @param string|null $domain Optional domain to filter tokens
      * @return bool
      */
-    public function notifyCompletionConfirmation($firebaseUid, $requestName, $completedCount, $requiredCount)
+    public function notifyCompletionConfirmation($firebaseUid, $requestName, $completedCount, $requiredCount, $domain = null)
     {
         if ($requiredCount <= 1) {
             // Single completer
@@ -350,7 +366,8 @@ class FcmNotificationService
                 [
                     'type' => 'completion_confirmation',
                     'request_name' => $requestName
-                ]
+                ],
+                $domain
             );
         } else {
             // Multi completer
@@ -364,7 +381,8 @@ class FcmNotificationService
                     'request_name' => $requestName,
                     'completed_count' => $completedCount,
                     'required_count' => $requiredCount
-                ]
+                ],
+                $domain
             );
         }
     }

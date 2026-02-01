@@ -230,10 +230,14 @@ const FcmService = {
             // Get device info
             const deviceInfo = this.getDeviceInfo();
 
+            // Get current domain (origin) to ensure notifications only go to this domain
+            const domain = window.location.origin;
+
             console.log('[FCM] Registering token with server...');
             console.log('[FCM] API Token present:', !!apiToken);
             console.log('[FCM] API Token preview:', apiToken.substring(0, 20) + '...');
             console.log('[FCM] CSRF Token present:', !!csrfToken);
+            console.log('[FCM] Domain:', domain);
 
             // Register token
             const response = await fetch('/apiv/_1/fcm/token', {
@@ -247,7 +251,8 @@ const FcmService = {
                 },
                 body: JSON.stringify({
                     token: token,
-                    device_info: deviceInfo
+                    device_info: deviceInfo,
+                    domain: domain
                 })
             });
 
