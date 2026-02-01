@@ -185,20 +185,52 @@ class FcmController extends Controller
         $title = $request->input('title', 'Test Notification');
         $body = $request->input('body', 'This is a test notification from the admin panel');
 
+        // Get current domain from request for filtering
+        $domain = $request->getSchemeAndHttpHost();
+
         /** @var \App\Services\FcmTokenService */
         $fcmTokenService = app(FcmTokenService::class);
 
-        // Check if user has any tokens
-        if (!$fcmTokenService->hasTokens($firebaseUid)) {
+        // Get all tokens for this user
+        $allTokens = $fcmTokenService->getUserTokens($firebaseUid);
+
+        // Get tokens filtered by domain
+        $domainTokens = $fcmTokenService->getUserTokensForDomain($firebaseUid, $domain);
+
+        Log::info('[TEST NOTIFICATION] Preparing to send', [
+            'firebase_uid' => $firebaseUid,
+            'request_domain' => $domain,
+            'all_tokens_count' => count($allTokens),
+            'domain_tokens_count' => count($domainTokens),
+            'all_tokens' => array_map(function($token) {
+                return substr($token, 0, 30) . '...';
+            }, $allTokens),
+            'domain_tokens' => array_map(function($token) {
+                return substr($token, 0, 30) . '...';
+            }, $domainTokens)
+        ]);
+
+        // Check if user has any tokens for this domain
+        if (empty($domainTokens)) {
+            $message = empty($allTokens)
+                ? 'User has no registered FCM tokens on any domain'
+                : "User has " . count($allTokens) . " token(s) but none registered for domain: {$domain}";
+
+            Log::warning('[TEST NOTIFICATION] No tokens for domain', [
+                'firebase_uid' => $firebaseUid,
+                'domain' => $domain,
+                'all_tokens_count' => count($allTokens)
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'User has no registered FCM tokens',
-                'has_tokens' => false
+                'message' => $message,
+                'has_tokens' => false,
+                'all_tokens_count' => count($allTokens),
+                'domain_tokens_count' => 0,
+                'requested_domain' => $domain
             ], 400);
         }
-
-        // Get current domain from request for filtering
-        $domain = $request->getSchemeAndHttpHost();
 
         /** @var \App\Services\FcmNotificationService */
         $fcmNotification = app(\App\Services\FcmNotificationService::class);
@@ -213,16 +245,21 @@ class FcmController extends Controller
         );
 
         if ($result) {
-            Log::info('Test notification sent to user', [
+            Log::info('[TEST NOTIFICATION] Sent successfully', [
                 'firebase_uid' => $firebaseUid,
                 'domain' => $domain,
+                'tokens_sent' => count($domainTokens),
                 'title' => $title
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Test notification sent successfully to all user devices',
-                'domain' => $domain
+                'message' => 'Test notification sent successfully to ' . count($domainTokens) . ' device(s) on ' . $domain,
+                'domain' => $domain,
+                'tokens_sent' => count($domainTokens),
+                'tokens_preview' => array_map(function($token) {
+                    return substr($token, 0, 30) . '...';
+                }, $domainTokens)
             ]);
         }
 

@@ -117,19 +117,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
 
                 const result = await response.json();
-                console.log('[Users Page] Response:', result);
+                console.log('[Users Page] ========================================');
+                console.log('[Users Page] Test Notification Result:');
+                console.log('[Users Page] User:', userName);
+                console.log('[Users Page] Success:', result.success);
+                console.log('[Users Page] Domain:', result.domain);
+                console.log('[Users Page] Tokens Sent:', result.tokens_sent || 0);
+                console.log('[Users Page] Total Tokens:', result.all_tokens_count || 0);
+                console.log('[Users Page] Tokens Preview:', result.tokens_preview || []);
+                console.log('[Users Page] Full Response:', result);
+                console.log('[Users Page] ========================================');
 
                 if (response.ok && result.success) {
                     // Success - show success toast
                     if (typeof iziToast !== 'undefined') {
                         iziToast.success({
                             title: 'Success!',
-                            message: 'Test notification sent to ' + userName + '. Check your device for the notification.',
+                            message: result.message || ('Test notification sent to ' + userName),
                             position: 'topRight',
                             timeout: 5000
                         });
                     } else {
-                        alert('Test notification sent to ' + userName);
+                        alert(result.message || ('Test notification sent to ' + userName));
                     }
                 } else if (result.has_tokens === false) {
                     // User has no tokens
