@@ -185,8 +185,22 @@ class FcmController extends Controller
         $title = $request->input('title', 'Test Notification');
         $body = $request->input('body', 'This is a test notification from the admin panel');
 
-        // Get current domain from request for filtering
-        $domain = $request->getSchemeAndHttpHost();
+        // Get current domain - use X-Forwarded-Host header if available (Vercel/LB)
+        // Otherwise fall back to request host
+        $host = $request->header('X-Forwarded-Host') ?? $request->getHost();
+        $scheme = $request->header('X-Forwarded-Proto') ?? ($request->secure() ? 'https' : 'http');
+        $domain = $scheme . '://' . $host;
+
+        // Log domain detection for debugging
+        Log::info('[TEST NOTIFICATION] Domain detection', [
+            'x_forwarded_host' => $request->header('X-Forwarded-Host'),
+            'x_forwarded_proto' => $request->header('X-Forwarded-Proto'),
+            'request_host' => $request->getHost(),
+            'request_secure' => $request->secure(),
+            'detected_host' => $host,
+            'detected_scheme' => $scheme,
+            'final_domain' => $domain
+        ]);
 
         /** @var \App\Services\FcmTokenService */
         $fcmTokenService = app(FcmTokenService::class);

@@ -421,8 +421,10 @@ class RequestsController extends Controller
             // Send FCM Notifications
             $fcmNotification = app(\App\Services\FcmNotificationService::class);
 
-            // Get the current domain from the request to ensure notifications only go to this domain
-            $domain = $request->getSchemeAndHttpHost();
+            // Get the current domain - use X-Forwarded headers if available (Vercel/LB)
+            $host = $request->header('X-Forwarded-Host') ?? $request->getHost();
+            $scheme = $request->header('X-Forwarded-Proto') ?? ($request->secure() ? 'https' : 'http');
+            $domain = $scheme . '://' . $host;
 
             // Use Firebase UIDs directly (notifications will be saved to DB and sent to devices matching this domain)
             if ($isFullyCompleted) {

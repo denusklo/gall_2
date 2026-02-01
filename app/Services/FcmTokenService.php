@@ -171,11 +171,14 @@ class FcmTokenService
             $tokens = [];
             $allData = $snapshot->getValue();
 
+            // Normalize domain for comparison (remove http/https, just compare host)
+            $normalizedRequestDomain = $this->normalizeDomain($domain);
+
             foreach ($allData as $key => $data) {
                 if (isset($data['token'])) {
-                    // Check if domain matches
+                    // Check if domain matches (protocol-agnostic)
                     $tokenDomain = $data['domain'] ?? null;
-                    if ($tokenDomain === $domain) {
+                    if ($tokenDomain && $this->normalizeDomain($tokenDomain) === $normalizedRequestDomain) {
                         $tokens[] = $data['token'];
                     }
                 }
@@ -183,7 +186,8 @@ class FcmTokenService
 
             Log::info('FCM tokens filtered by domain', [
                 'uid' => $uid,
-                'domain' => $domain,
+                'requested_domain' => $domain,
+                'normalized_domain' => $normalizedRequestDomain,
                 'token_count' => count($tokens),
                 'total_tokens' => count($allData)
             ]);
@@ -197,6 +201,27 @@ class FcmTokenService
             ]);
             return [];
         }
+    }
+
+    /**
+     * Normalize domain for comparison (remove protocol and port)
+     * This allows matching http://example.com with https://example.com
+     *
+     * @param string $domain Full domain URL
+     * @return string Normalized domain (just hostname)
+     */
+    protected function normalizeDomain($domain)
+    {
+        // Remove protocol (http:// or https://)
+        $normalized = preg_replace('/^https?:\/\//', '', $domain);
+
+        // Remove port if present
+        $normalized = preg_replace('/:\d+$/', '', $normalized);
+
+        // Remove trailing slash
+        $normalized = rtrim($normalized, '/');
+
+        return strtolower($normalized);
     }
 
     /**
