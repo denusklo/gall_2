@@ -49,6 +49,32 @@ const FcmService = {
             await navigator.serviceWorker.ready;
             console.log('[FCM] Service Worker is ready and active');
 
+            // Edge-specific fix: Ensure SW is actually active before proceeding
+            // Edge can be slower to activate service workers
+            if (!this.swRegistration.active) {
+                console.log('[FCM] Waiting for service worker to fully activate...');
+                await new Promise(resolve => {
+                    if (this.swRegistration.active) {
+                        resolve();
+                    } else {
+                        this.swRegistration.addEventListener('updatefound', () => {
+                            const newWorker = this.swRegistration.installing;
+                            if (newWorker) {
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'activated') {
+                                        console.log('[FCM] Service Worker fully activated');
+                                        resolve();
+                                    }
+                                });
+                            }
+                        });
+
+                        // Fallback timeout for Edge
+                        setTimeout(resolve, 3000);
+                    }
+                });
+            }
+
             // Initialize Firebase
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);

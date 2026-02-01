@@ -88,15 +88,16 @@ class FcmNotificationService
 
             foreach ($tokens as $token) {
                 try {
-                    // Create WebPushConfig for Firefox support
-                    // Firefox uses Mozilla's Push Service and needs WebPush configuration
+                    // Create WebPushConfig for Firefox and Edge support
+                    // Both Firefox and Edge use their own push services (not FCM directly)
                     $webPushConfig = WebPushConfig::fromArray([
                         'fcm_options' => [
                             'link' => url('/requests/my')
                         ],
-                        // Add headers for Firefox compatibility
+                        // Add headers for Firefox/Edge compatibility
                         'headers' => [
-                            'TTL' => '3600' // 1 hour TTL for push message
+                            'TTL' => '3600', // 1 hour TTL for push message
+                            'Urgency' => 'high' // High urgency for better delivery
                         ]
                     ]);
 
@@ -105,7 +106,19 @@ class FcmNotificationService
                         ->withData(array_merge($data, ['type' => $type]))
                         ->withWebPushConfig($webPushConfig);
 
+                    // Log before sending for debugging
+                    Log::info('[FCM SEND] Sending notification', [
+                        'token' => substr($token, 0, 30) . '...',
+                        'title' => $title,
+                        'domain' => $domain ?? 'all'
+                    ]);
+
                     $this->messaging->send($targetedMessage);
+
+                    Log::info('[FCM SEND] Successfully sent', [
+                        'token' => substr($token, 0, 30) . '...'
+                    ]);
+
                     $successCount++;
                 } catch (\Exception $e) {
                     $failCount++;

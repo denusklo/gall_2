@@ -9,7 +9,8 @@
             <div class="card">
                 <div class="card-header">Registered User List</div>
                 <div class="card-body">
-                    <table class="table table-bordered table-striped">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped">
                         <thead>
                             <tr>
                                 <th>No.</th>
@@ -56,7 +57,8 @@
                                 </tr>
                             @endforeach
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
