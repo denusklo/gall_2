@@ -369,15 +369,72 @@ const FcmService = {
      */
     async verifyNotificationRecipient(payload) {
         try {
+            const apiToken = localStorage.getItem(this.getApiKey());
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
             // Get current user's Firebase UID
             const response = await fetch('/apiv/_1/test-auth', {
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem(this.getApiKey())}`,
-                    'Accept': 'application/json'
+                    'Authorization': `Bearer ${apiToken}`,
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken || '',
+                    'X-Requested-With': 'XMLHttpRequest'
                 }
             });
 
             if (!response.ok) {
+                // Handle 401 - token invalid/expired, try to refresh and retry
+                if (response.status === 401) {
+                    console.warn('[FCM] Token invalid during verification, attempting refresh...');
+                    const newToken = await this.refreshApiToken();
+
+                    if (newToken) {
+                        // Retry verification with new token
+                        const retryResponse = await fetch('/apiv/_1/test-auth', {
+                            headers: {
+                                'Authorization': `Bearer ${newToken}`,
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken || '',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
+                        });
+
+                        if (retryResponse.ok) {
+                            const data = await retryResponse.json();
+                            const currentFirebaseUid = data.firebase_uid;
+
+                            if (currentFirebaseUid) {
+                                // Check if we have the last known Firebase UID stored
+                                const lastKnownUid = localStorage.getItem('fcm_last_firebase_uid');
+
+                                // If the Firebase UID has changed, re-register the FCM token
+                                if (lastKnownUid !== currentFirebaseUid) {
+                                    console.log('[FCM] User changed, re-registering FCM token:', {
+                                        old: lastKnownUid,
+                                        new: currentFirebaseUid
+                                    });
+
+                                    // Update the stored UID
+                                    localStorage.setItem('fcm_last_firebase_uid', currentFirebaseUid);
+
+                                    // Re-register the FCM token with the new user
+                                    if (this.token) {
+                                        await this.registerTokenWithServer(this.token);
+                                    }
+                                }
+                            }
+
+                            return true;
+                        } else {
+                            console.error('[FCM] Verification retry failed after token refresh');
+                            return false;
+                        }
+                    } else {
+                        console.error('[FCM] Failed to refresh token during verification');
+                        return false;
+                    }
+                }
+
                 return false;
             }
 
