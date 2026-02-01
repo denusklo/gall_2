@@ -20,14 +20,21 @@ class FcmTokenService
      * @param string $uid User's Firebase UID
      * @param string $token FCM device token
      * @param string $deviceInfo Optional device information
+     * @param string $domain Optional domain (origin) where token was registered
      * @return bool
      */
-    public function storeToken($uid, $token, $deviceInfo = null)
+    public function storeToken($uid, $token, $deviceInfo = null, $domain = null)
     {
         try {
             // CRITICAL FIX: Remove this token from ALL other users first
             // This prevents tokens from being registered to multiple users
             $this->removeTokenFromAllOtherUsers($uid, $token);
+
+            // Clean up old tokens without domain for this user
+            // Only run this occasionally (every 10th registration) to avoid performance impact
+            if (rand(1, 10) === 1) {
+                $this->cleanUserOldTokens($uid);
+            }
 
             $reference = $this->database->getReference("users/{$uid}/fcm_tokens/{$this->sanitizeTokenKey($token)}");
 
@@ -40,10 +47,15 @@ class FcmTokenService
                 $data['device_info'] = $deviceInfo;
             }
 
+            if ($domain) {
+                $data['domain'] = $domain;
+            }
+
             $reference->set($data);
 
             Log::info('FCM token stored', [
                 'uid' => $uid,
+                'domain' => $domain,
                 'token' => substr($token, 0, 20) . '...'
             ]);
 
@@ -140,6 +152,79 @@ class FcmTokenService
     }
 
     /**
+     * Get FCM tokens for a user filtered by domain
+     *
+     * @param string $uid User's Firebase UID
+     * @param string $domain Domain to filter by (e.g., https://example.com)
+     * @return array Array of tokens matching the domain
+     */
+    public function getUserTokensForDomain($uid, $domain)
+    {
+        try {
+            $reference = $this->database->getReference("users/{$uid}/fcm_tokens");
+            $snapshot = $reference->getSnapshot();
+
+            if (!$snapshot->exists()) {
+                return [];
+            }
+
+            $tokens = [];
+            $allData = $snapshot->getValue();
+
+            // Normalize domain for comparison (remove http/https, just compare host)
+            $normalizedRequestDomain = $this->normalizeDomain($domain);
+
+            foreach ($allData as $key => $data) {
+                if (isset($data['token'])) {
+                    // Check if domain matches (protocol-agnostic)
+                    $tokenDomain = $data['domain'] ?? null;
+                    if ($tokenDomain && $this->normalizeDomain($tokenDomain) === $normalizedRequestDomain) {
+                        $tokens[] = $data['token'];
+                    }
+                }
+            }
+
+            Log::info('FCM tokens filtered by domain', [
+                'uid' => $uid,
+                'requested_domain' => $domain,
+                'normalized_domain' => $normalizedRequestDomain,
+                'token_count' => count($tokens),
+                'total_tokens' => count($allData)
+            ]);
+
+            return $tokens;
+        } catch (\Exception $e) {
+            Log::error('Failed to get user FCM tokens for domain', [
+                'uid' => $uid,
+                'domain' => $domain,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Normalize domain for comparison (remove protocol and port)
+     * This allows matching http://example.com with https://example.com
+     *
+     * @param string $domain Full domain URL
+     * @return string Normalized domain (just hostname)
+     */
+    protected function normalizeDomain($domain)
+    {
+        // Remove protocol (http:// or https://)
+        $normalized = preg_replace('/^https?:\/\//', '', $domain);
+
+        // Remove port if present
+        $normalized = preg_replace('/:\d+$/', '', $normalized);
+
+        // Remove trailing slash
+        $normalized = rtrim($normalized, '/');
+
+        return strtolower($normalized);
+    }
+
+    /**
      * Get the primary/most recent FCM token for a user
      *
      * @param string $uid User's Firebase UID
@@ -202,6 +287,178 @@ class FcmTokenService
                 'error' => $e->getMessage()
             ]);
             return false;
+        }
+    }
+
+    /**
+     * Clean up old tokens without domain information
+     * This removes tokens that were registered before domain tracking was added
+     *
+     * @param string|null $uid Optional specific user UID to clean up (null = all users)
+     * @return array Results with counts of cleaned tokens
+     */
+    public function cleanUpOldTokens($uid = null)
+    {
+        try {
+            $cleanedCount = 0;
+            $usersProcessed = 0;
+
+            if ($uid) {
+                // Clean up for specific user
+                $result = $this->cleanUserOldTokens($uid);
+                $cleanedCount = $result['cleaned'];
+                $usersProcessed = 1;
+            } else {
+                // Clean up for all users
+                $usersRef = $this->database->getReference('users');
+                $snapshot = $usersRef->getSnapshot();
+
+                if (!$snapshot->exists()) {
+                    return ['cleaned' => 0, 'users' => 0];
+                }
+
+                $allUsers = $snapshot->getValue();
+
+                foreach ($allUsers as $userId => $userData) {
+                    $result = $this->cleanUserOldTokens($userId);
+                    if ($result['cleaned'] > 0) {
+                        $cleanedCount += $result['cleaned'];
+                        $usersProcessed++;
+                    }
+                }
+            }
+
+            Log::info('FCM old token cleanup completed', [
+                'users_processed' => $usersProcessed,
+                'tokens_cleaned' => $cleanedCount
+            ]);
+
+            return [
+                'cleaned' => $cleanedCount,
+                'users' => $usersProcessed
+            ];
+        } catch (\Exception $e) {
+            Log::error('Failed to clean up old FCM tokens', [
+                'uid' => $uid,
+                'error' => $e->getMessage()
+            ]);
+            return ['cleaned' => 0, 'users' => 0];
+        }
+    }
+
+    /**
+     * Clean up old tokens for a specific user
+     * Removes tokens without domain information
+     *
+     * @param string $uid User's Firebase UID
+     * @return array Results with count of cleaned tokens
+     */
+    protected function cleanUserOldTokens($uid)
+    {
+        try {
+            $reference = $this->database->getReference("users/{$uid}/fcm_tokens");
+            $snapshot = $reference->getSnapshot();
+
+            if (!$snapshot->exists()) {
+                return ['cleaned' => 0];
+            }
+
+            $tokens = $snapshot->getValue();
+            $cleanedCount = 0;
+
+            foreach ($tokens as $tokenKey => $tokenData) {
+                // Remove tokens without domain field (old tokens)
+                if (!isset($tokenData['domain'])) {
+                    $this->database->getReference("users/{$uid}/fcm_tokens/{$tokenKey}")->remove();
+                    $cleanedCount++;
+
+                    Log::info('Removed old FCM token (no domain)', [
+                        'uid' => $uid,
+                        'token' => substr($tokenData['token'] ?? 'unknown', 0, 20) . '...'
+                    ]);
+                }
+            }
+
+            return ['cleaned' => $cleanedCount];
+        } catch (\Exception $e) {
+            Log::error('Failed to clean up old FCM tokens for user', [
+                'uid' => $uid,
+                'error' => $e->getMessage()
+            ]);
+            return ['cleaned' => 0];
+        }
+    }
+
+    /**
+     * Clean up duplicate tokens for a user
+     * Keeps only the most recent token for each domain
+     *
+     * @param string $uid User's Firebase UID
+     * @return array Results with count of cleaned tokens
+     */
+    public function cleanUpDuplicateTokens($uid)
+    {
+        try {
+            $reference = $this->database->getReference("users/{$uid}/fcm_tokens");
+            $snapshot = $reference->getSnapshot();
+
+            if (!$snapshot->exists()) {
+                return ['cleaned' => 0];
+            }
+
+            $tokens = $snapshot->getValue();
+            $cleanedCount = 0;
+
+            // Group tokens by domain
+            $tokensByDomain = [];
+            foreach ($tokens as $tokenKey => $tokenData) {
+                $domain = $tokenData['domain'] ?? 'unknown';
+                $updatedAt = $tokenData['updated_at'] ?? '';
+
+                if (!isset($tokensByDomain[$domain])) {
+                    $tokensByDomain[$domain] = [];
+                }
+
+                $tokensByDomain[$domain][] = [
+                    'key' => $tokenKey,
+                    'data' => $tokenData,
+                    'updated_at' => $updatedAt
+                ];
+            }
+
+            // For each domain, keep only the most recent token
+            foreach ($tokensByDomain as $domain => $domainTokens) {
+                if (count($domainTokens) <= 1) {
+                    continue; // No duplicates for this domain
+                }
+
+                // Sort by updated_at descending (most recent first)
+                usort($domainTokens, function($a, $b) {
+                    return strtotime($b['updated_at']) - strtotime($a['updated_at']);
+                });
+
+                // Keep the first (most recent) token, remove the rest
+                $keepToken = array_shift($domainTokens);
+
+                foreach ($domainTokens as $oldToken) {
+                    $this->database->getReference("users/{$uid}/fcm_tokens/{$oldToken['key']}")->remove();
+                    $cleanedCount++;
+
+                    Log::info('Removed duplicate FCM token', [
+                        'uid' => $uid,
+                        'domain' => $domain,
+                        'token' => substr($oldToken['data']['token'] ?? 'unknown', 0, 20) . '...'
+                    ]);
+                }
+            }
+
+            return ['cleaned' => $cleanedCount];
+        } catch (\Exception $e) {
+            Log::error('Failed to clean up duplicate FCM tokens', [
+                'uid' => $uid,
+                'error' => $e->getMessage()
+            ]);
+            return ['cleaned' => 0];
         }
     }
 

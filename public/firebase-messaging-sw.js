@@ -20,7 +20,12 @@ const messaging = firebase.messaging();
 
 // Handle background messages
 messaging.onBackgroundMessage(function(payload) {
-    console.log('[FCM SW] Received background message:', payload);
+    console.log('[FCM SW] ==================================');
+    console.log('[FCM SW] Received background message!');
+    console.log('[FCM SW] Payload:', payload);
+    console.log('[FCM SW] Notification:', payload.notification);
+    console.log('[FCM SW] Data:', payload.data);
+    console.log('[FCM SW] ==================================');
 
     const notification = payload.notification;
     const notificationTitle = notification.title || 'Notification';
@@ -33,6 +38,7 @@ messaging.onBackgroundMessage(function(payload) {
     };
 
     // Show the notification
+    console.log('[FCM SW] Showing notification:', notificationTitle);
     return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
@@ -80,6 +86,10 @@ self.addEventListener('notificationclick', function(event) {
     );
 });
 
+// ========================================
+// INSTALL & ACTIVATE EVENTS
+// ========================================
+
 self.addEventListener('install', function(event) {
     console.log('[FCM SW] Service Worker installing...');
     self.skipWaiting();
@@ -87,5 +97,20 @@ self.addEventListener('install', function(event) {
 
 self.addEventListener('activate', function(event) {
     console.log('[FCM SW] Service Worker activating...');
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(
+        Promise.all([
+            self.clients.claim(),
+            caches.keys().then(cacheNames => {
+                return Promise.all(
+                    cacheNames.map(cacheName => {
+                        if (!cacheName.includes('firebase-messaging') &&
+                            !cacheName.includes('workbox')) {
+                            console.log('[FCM SW] Deleting old cache:', cacheName);
+                            return caches.delete(cacheName);
+                        }
+                    })
+                );
+            })
+        ])
+    );
 });

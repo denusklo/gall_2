@@ -19,6 +19,7 @@ const firebaseConfig = {
 const FcmService = {
     messaging: null,
     token: null,
+    swRegistration: null, // Store service worker registration
 
     /**
      * Initialize FCM
@@ -39,14 +40,40 @@ const FcmService = {
 
             // Register service worker
             console.log('[FCM] Registering service worker...');
-            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            this.swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
                 scope: '/'
             });
-            console.log('[FCM] Service Worker registered:', registration);
+            console.log('[FCM] Service Worker registered:', this.swRegistration);
 
             // Wait for service worker to be ready
             await navigator.serviceWorker.ready;
             console.log('[FCM] Service Worker is ready and active');
+
+            // Edge-specific fix: Ensure SW is actually active before proceeding
+            // Edge can be slower to activate service workers
+            if (!this.swRegistration.active) {
+                console.log('[FCM] Waiting for service worker to fully activate...');
+                await new Promise(resolve => {
+                    if (this.swRegistration.active) {
+                        resolve();
+                    } else {
+                        this.swRegistration.addEventListener('updatefound', () => {
+                            const newWorker = this.swRegistration.installing;
+                            if (newWorker) {
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'activated') {
+                                        console.log('[FCM] Service Worker fully activated');
+                                        resolve();
+                                    }
+                                });
+                            }
+                        });
+
+                        // Fallback timeout for Edge
+                        setTimeout(resolve, 3000);
+                    }
+                });
+            }
 
             // Initialize Firebase
             if (!firebase.apps.length) {
@@ -85,9 +112,15 @@ const FcmService = {
                 return false;
             }
 
-            // Get FCM token
+            // Use the stored service worker registration
+            // This prevents Firebase from creating its own internal SW
+            console.log('[FCM] Using SW registration for getToken:', this.swRegistration?.scope);
+
+            // Get FCM token with explicit service worker registration
+            // This prevents Firebase from creating its own internal SW
             const currentToken = await this.messaging.getToken({
-                vapidKey: window.FIREBASE_CONFIG?.vapidKey || ''
+                vapidKey: window.FIREBASE_CONFIG?.vapidKey || '',
+                serviceWorkerRegistration: this.swRegistration
             });
 
             if (!currentToken) {
@@ -97,6 +130,17 @@ const FcmService = {
 
             // Save token
             this.token = currentToken;
+
+            // Log current FCM token info
+            const domain = window.location.origin;
+            const deviceInfo = this.getDeviceInfo();
+            console.log('[FCM] ========================================');
+            console.log('[FCM] Current FCM Token Info:');
+            console.log('[FCM] Token:', currentToken.substring(0, 30) + '...');
+            console.log('[FCM] Full Token:', currentToken);
+            console.log('[FCM] Domain:', domain);
+            console.log('[FCM] Device:', deviceInfo);
+            console.log('[FCM] ========================================');
 
             // Register token with server
             await this.registerTokenWithServer(currentToken);
@@ -223,10 +267,14 @@ const FcmService = {
             // Get device info
             const deviceInfo = this.getDeviceInfo();
 
+            // Get current domain (origin) to ensure notifications only go to this domain
+            const domain = window.location.origin;
+
             console.log('[FCM] Registering token with server...');
             console.log('[FCM] API Token present:', !!apiToken);
             console.log('[FCM] API Token preview:', apiToken.substring(0, 20) + '...');
             console.log('[FCM] CSRF Token present:', !!csrfToken);
+            console.log('[FCM] Domain:', domain);
 
             // Register token
             const response = await fetch('/apiv/_1/fcm/token', {
@@ -240,7 +288,8 @@ const FcmService = {
                 },
                 body: JSON.stringify({
                     token: token,
-                    device_info: deviceInfo
+                    device_info: deviceInfo,
+                    domain: domain
                 })
             });
 
@@ -346,15 +395,72 @@ const FcmService = {
      */
     async verifyNotificationRecipient(payload) {
         try {
+            const apiToken = localStorage.getItem(this.getApiKey());
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
             // Get current user's Firebase UID
             const response = await fetch('/apiv/_1/test-auth', {
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem(this.getApiKey())}`,
-                    'Accept': 'application/json'
+                    'Authorization': `Bearer ${apiToken}`,
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken || '',
+                    'X-Requested-With': 'XMLHttpRequest'
                 }
             });
 
             if (!response.ok) {
+                // Handle 401 - token invalid/expired, try to refresh and retry
+                if (response.status === 401) {
+                    console.warn('[FCM] Token invalid during verification, attempting refresh...');
+                    const newToken = await this.refreshApiToken();
+
+                    if (newToken) {
+                        // Retry verification with new token
+                        const retryResponse = await fetch('/apiv/_1/test-auth', {
+                            headers: {
+                                'Authorization': `Bearer ${newToken}`,
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken || '',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
+                        });
+
+                        if (retryResponse.ok) {
+                            const data = await retryResponse.json();
+                            const currentFirebaseUid = data.firebase_uid;
+
+                            if (currentFirebaseUid) {
+                                // Check if we have the last known Firebase UID stored
+                                const lastKnownUid = localStorage.getItem('fcm_last_firebase_uid');
+
+                                // If the Firebase UID has changed, re-register the FCM token
+                                if (lastKnownUid !== currentFirebaseUid) {
+                                    console.log('[FCM] User changed, re-registering FCM token:', {
+                                        old: lastKnownUid,
+                                        new: currentFirebaseUid
+                                    });
+
+                                    // Update the stored UID
+                                    localStorage.setItem('fcm_last_firebase_uid', currentFirebaseUid);
+
+                                    // Re-register the FCM token with the new user
+                                    if (this.token) {
+                                        await this.registerTokenWithServer(this.token);
+                                    }
+                                }
+                            }
+
+                            return true;
+                        } else {
+                            console.error('[FCM] Verification retry failed after token refresh');
+                            return false;
+                        }
+                    } else {
+                        console.error('[FCM] Failed to refresh token during verification');
+                        return false;
+                    }
+                }
+
                 return false;
             }
 
@@ -495,6 +601,26 @@ const FcmService = {
     }
 };
 
+// ========================================
+// SERVICE WORKER MESSAGE HANDLER
+// Handles messages from the service worker
+// (e.g., keep-alive pings to maintain Firefox connection)
+// ========================================
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        const data = event.data;
+
+        // Handle keep-alive messages silently
+        if (data && data.type === 'fcm-keep-alive') {
+            console.log('[FCM] Keep-alive ping received from service worker');
+            return;
+        }
+
+        // Log other messages for debugging
+        console.log('[FCM] Message from service worker:', data);
+    });
+}
+
 // Initialize FCM when DOM is ready
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('[FCM] DOM loaded, checking initialization...');
@@ -531,3 +657,27 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // Make FcmService available globally
 window.FcmService = FcmService;
+
+// Global debug function to show current FCM info
+window.showFcmInfo = function() {
+    console.log('[FCM DEBUG] ========================================');
+    console.log('[FCM DEBUG] Current FCM Status:');
+    console.log('[FCM DEBUG] ----------------------------------------');
+    console.log('[FCM DEBUG] Token:', FcmService.token ? FcmService.token.substring(0, 30) + '...' : 'NOT SET');
+    console.log('[FCM DEBUG] Full Token:', FcmService.token || 'NOT SET');
+    console.log('[FCM DEBUG] Domain:', window.location.origin);
+    console.log('[FCM DEBUG] Device:', FcmService.getDeviceInfo());
+    console.log('[FCM DEBUG] Service Worker:', navigator.serviceWorker.controller ? 'ACTIVE' : 'NOT ACTIVE');
+    console.log('[FCM DEBUG] ----------------------------------------');
+    console.log('[FCM DEBUG] Usage: Call showFcmInfo() in console to see this info');
+    console.log('[FCM DEBUG] ========================================');
+
+    return {
+        token: FcmService.token,
+        domain: window.location.origin,
+        device: FcmService.getDeviceInfo(),
+        swActive: !!navigator.serviceWorker.controller
+    };
+};
+
+console.log('[FCM] Debug function available: showFcmInfo()');

@@ -48,9 +48,10 @@ class FcmNotificationService
      * @param string $body Notification body
      * @param string $type Notification type (info, success, warning, error)
      * @param array $data Additional data payload
+     * @param string|null $domain Optional domain to filter tokens (e.g., https://example.com)
      * @return bool
      */
-    public function sendToUser($firebaseUid, $title, $body, $type = 'info', $data = [])
+    public function sendToUser($firebaseUid, $title, $body, $type = 'info', $data = [], $domain = null)
     {
         try {
             // Get user by Firebase UID
@@ -61,11 +62,18 @@ class FcmNotificationService
 
             // Get FCM tokens for this user
             $fcmTokenService = app(FcmTokenService::class);
-            $tokens = $fcmTokenService->getUserTokens($firebaseUid);
+
+            // Filter by domain if provided
+            if ($domain) {
+                $tokens = $fcmTokenService->getUserTokensForDomain($firebaseUid, $domain);
+            } else {
+                $tokens = $fcmTokenService->getUserTokens($firebaseUid);
+            }
 
             if (empty($tokens)) {
                 Log::info('No FCM tokens found for user, notification saved to DB only', [
-                    'firebase_uid' => $firebaseUid
+                    'firebase_uid' => $firebaseUid,
+                    'domain' => $domain
                 ]);
                 return true; // Still success since saved to DB
             }
@@ -80,23 +88,76 @@ class FcmNotificationService
 
             foreach ($tokens as $token) {
                 try {
+                    // Create WebPushConfig for Firefox and Edge support
+                    // Both Firefox and Edge use their own push services (not FCM directly)
+                    $webPushConfig = WebPushConfig::fromArray([
+                        'fcm_options' => [
+                            'link' => url('/requests/my')
+                        ],
+                        // Add headers for Firefox/Edge compatibility
+                        'headers' => [
+                            'TTL' => '3600', // 1 hour TTL for push message
+                            'Urgency' => 'high' // High urgency for better delivery
+                        ]
+                    ]);
+
                     $targetedMessage = CloudMessage::withTarget('token', $token)
                         ->withNotification($notification)
-                        ->withData(array_merge($data, ['type' => $type]));
+                        ->withData(array_merge($data, ['type' => $type]))
+                        ->withWebPushConfig($webPushConfig);
+
+                    // Log before sending for debugging
+                    Log::info('[FCM SEND] Sending notification', [
+                        'token' => substr($token, 0, 30) . '...',
+                        'title' => $title,
+                        'domain' => $domain ?? 'all'
+                    ]);
 
                     $this->messaging->send($targetedMessage);
+
+                    Log::info('[FCM SEND] Successfully sent', [
+                        'token' => substr($token, 0, 30) . '...'
+                    ]);
+
                     $successCount++;
                 } catch (\Exception $e) {
                     $failCount++;
+                    $errorMsg = $e->getMessage();
+
                     Log::warning('Failed to send to specific token', [
                         'token' => substr($token, 0, 20) . '...',
-                        'error' => $e->getMessage()
+                        'error' => $errorMsg
                     ]);
+
+                    // Check if token is invalid/unregistered and clean it up
+                    if (
+                        strpos($errorMsg, 'not known to the Firebase project') !== false ||
+                        strpos($errorMsg, 'unregistered') !== false ||
+                        strpos($errorMsg, 'invalid') !== false ||
+                        $e->getCode() === 404
+                    ) {
+                        Log::info('Cleaning up invalid FCM token', [
+                            'firebase_uid' => $firebaseUid,
+                            'token' => substr($token, 0, 20) . '...'
+                        ]);
+
+                        // Remove invalid token from Firebase
+                        try {
+                            $fcmTokenService = app(FcmTokenService::class);
+                            $fcmTokenService->removeToken($firebaseUid, $token);
+                            Log::info('Invalid FCM token removed successfully');
+                        } catch (\Exception $cleanupError) {
+                            Log::error('Failed to remove invalid token', [
+                                'error' => $cleanupError->getMessage()
+                            ]);
+                        }
+                    }
                 }
             }
 
             Log::info('FCM notification sent to user', [
                 'firebase_uid' => $firebaseUid,
+                'domain' => $domain ?? 'all',
                 'success' => $successCount,
                 'failures' => $failCount,
                 'total_tokens' => count($tokens),
@@ -127,9 +188,20 @@ class FcmNotificationService
         try {
             $notification = FirebaseNotification::create($title, $body);
 
+            // Add WebPushConfig for Firefox support
+            $webPushConfig = WebPushConfig::fromArray([
+                'fcm_options' => [
+                    'link' => url('/requests/my')
+                ],
+                'headers' => [
+                    'TTL' => '3600'
+                ]
+            ]);
+
             $message = CloudMessage::withTarget('token', $token)
                 ->withNotification($notification)
-                ->withData($data);
+                ->withData($data)
+                ->withWebPushConfig($webPushConfig);
 
             $this->messaging->send($message);
 
@@ -235,9 +307,10 @@ class FcmNotificationService
      * @param string $firebaseUid Firebase UID of request creator
      * @param string $requestName Name of the request
      * @param string $completerName Name of person who completed
+     * @param string|null $domain Optional domain to filter tokens
      * @return bool
      */
-    public function notifyRequestCompleted($firebaseUid, $requestName, $completerName = 'Someone')
+    public function notifyRequestCompleted($firebaseUid, $requestName, $completerName = 'Someone', $domain = null)
     {
         return $this->sendToUser(
             $firebaseUid,
@@ -248,7 +321,8 @@ class FcmNotificationService
                 'type' => 'request_completed',
                 'request_name' => $requestName,
                 'completer_name' => $completerName
-            ]
+            ],
+            $domain
         );
     }
 
@@ -261,9 +335,10 @@ class FcmNotificationService
      * @param int $completedCount Number of people completed
      * @param int $requiredCount Total required
      * @param string $completerName Name of person who just completed
+     * @param string|null $domain Optional domain to filter tokens
      * @return bool
      */
-    public function notifyNewCompletion($firebaseUid, $requestName, $completedCount, $requiredCount, $completerName = 'Someone')
+    public function notifyNewCompletion($firebaseUid, $requestName, $completedCount, $requiredCount, $completerName = 'Someone', $domain = null)
     {
         return $this->sendToUser(
             $firebaseUid,
@@ -276,7 +351,8 @@ class FcmNotificationService
                 'completed_count' => $completedCount,
                 'required_count' => $requiredCount,
                 'completer_name' => $completerName
-            ]
+            ],
+            $domain
         );
     }
 
@@ -287,9 +363,10 @@ class FcmNotificationService
      * @param string $firebaseUid Firebase UID of request creator
      * @param string $requestName Name of the request
      * @param int $totalCompleters Total number of completers
+     * @param string|null $domain Optional domain to filter tokens
      * @return bool
      */
-    public function notifyFullyCompleted($firebaseUid, $requestName, $totalCompleters)
+    public function notifyFullyCompleted($firebaseUid, $requestName, $totalCompleters, $domain = null)
     {
         return $this->sendToUser(
             $firebaseUid,
@@ -300,7 +377,8 @@ class FcmNotificationService
                 'type' => 'fully_completed',
                 'request_name' => $requestName,
                 'total_completers' => $totalCompleters
-            ]
+            ],
+            $domain
         );
     }
 
@@ -312,9 +390,10 @@ class FcmNotificationService
      * @param string $requestName Name of the request
      * @param int $completedCount Current number of completions
      * @param int $requiredCount Total required (0 for single-completer)
+     * @param string|null $domain Optional domain to filter tokens
      * @return bool
      */
-    public function notifyCompletionConfirmation($firebaseUid, $requestName, $completedCount, $requiredCount)
+    public function notifyCompletionConfirmation($firebaseUid, $requestName, $completedCount, $requiredCount, $domain = null)
     {
         if ($requiredCount <= 1) {
             // Single completer
@@ -326,7 +405,8 @@ class FcmNotificationService
                 [
                     'type' => 'completion_confirmation',
                     'request_name' => $requestName
-                ]
+                ],
+                $domain
             );
         } else {
             // Multi completer
@@ -340,7 +420,8 @@ class FcmNotificationService
                     'request_name' => $requestName,
                     'completed_count' => $completedCount,
                     'required_count' => $requiredCount
-                ]
+                ],
+                $domain
             );
         }
     }

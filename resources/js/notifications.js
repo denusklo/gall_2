@@ -5,6 +5,7 @@
 
 const NotificationService = {
     notifications: [],
+    unreadCount: 0,
     tokenRefreshed: false,
 
     async init() {
@@ -133,8 +134,7 @@ const NotificationService = {
 
             if (response.ok) {
                 const data = await response.json();
-                // Note: We no longer store unreadCount separately
-                // Badge is calculated dynamically from notifications array
+                this.unreadCount = data.count || 0;
                 this.updateBadge();
             }
         } catch (error) {
@@ -160,7 +160,11 @@ const NotificationService = {
     markAsReadLocally(id) {
         const notification = this.notifications.find(n => n.id === id);
         if (notification) {
+            const wasUnread = !notification.read_at;
             notification.read_at = new Date().toISOString();
+            if (wasUnread) {
+                this.unreadCount = Math.max(0, this.unreadCount - 1);
+            }
             this.renderNotifications();
             this.updateBadge();
         }
@@ -177,6 +181,7 @@ const NotificationService = {
                 this.notifications.forEach(n => {
                     if (!n.read_at) n.read_at = new Date().toISOString();
                 });
+                this.unreadCount = 0;
                 this.updateBadge();
                 this.renderNotifications();
             }
@@ -197,8 +202,9 @@ const NotificationService = {
                 const wasUnread = !notif?.read_at;
                 this.notifications = this.notifications.filter(n => n.id !== id);
                 if (wasUnread) {
-                    this.updateBadge();
+                    this.unreadCount = Math.max(0, this.unreadCount - 1);
                 }
+                this.updateBadge();
                 this.renderNotifications();
             }
         } catch (error) {
@@ -209,10 +215,8 @@ const NotificationService = {
     updateBadge() {
         const badge = document.getElementById('notificationBadge');
         if (badge) {
-            // Calculate unread count from local notifications
-            const unreadCount = this.notifications.filter(n => !n.read_at).length;
-            if (unreadCount > 0) {
-                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+            if (this.unreadCount > 0) {
+                badge.textContent = this.unreadCount > 99 ? '99+' : this.unreadCount;
                 badge.style.display = 'inline-block';
             } else {
                 badge.style.display = 'none';

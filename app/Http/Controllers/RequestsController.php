@@ -421,19 +421,24 @@ class RequestsController extends Controller
             // Send FCM Notifications
             $fcmNotification = app(\App\Services\FcmNotificationService::class);
 
-            // Use Firebase UIDs directly (notifications will be saved to DB and sent to all devices)
+            // Get the current domain - use X-Forwarded headers if available (Vercel/LB)
+            $host = $request->header('X-Forwarded-Host') ?? $request->getHost();
+            $scheme = $request->header('X-Forwarded-Proto') ?? ($request->secure() ? 'https' : 'http');
+            $domain = $scheme . '://' . $host;
+
+            // Use Firebase UIDs directly (notifications will be saved to DB and sent to devices matching this domain)
             if ($isFullyCompleted) {
                 // Request fully completed
                 if ($allowMultiple) {
                     // Multi-completer fully completed
-                    $fcmNotification->notifyFullyCompleted($createdBy, $requestName, count($completers));
+                    $fcmNotification->notifyFullyCompleted($createdBy, $requestName, count($completers), $domain);
                 } else {
                     // Single completer completed
-                    $fcmNotification->notifyRequestCompleted($createdBy, $requestName, $completerName);
+                    $fcmNotification->notifyRequestCompleted($createdBy, $requestName, $completerName, $domain);
                 }
 
                 // Notify completer of full completion
-                $fcmNotification->notifyCompletionConfirmation($currentUserId, $requestName, count($completers), $requiredCompleters);
+                $fcmNotification->notifyCompletionConfirmation($currentUserId, $requestName, count($completers), $requiredCompleters, $domain);
 
                 return redirect()->route('requests.all')
                     ->with('success', "Request '{$requestName}' has been fully completed! ({$requiredCompleters}/{$requiredCompleters})");
@@ -444,11 +449,11 @@ class RequestsController extends Controller
 
                 // Notify creator of new completion
                 if ($allowMultiple) {
-                    $fcmNotification->notifyNewCompletion($createdBy, $requestName, $completedCount, $requiredCompleters, $completerName);
+                    $fcmNotification->notifyNewCompletion($createdBy, $requestName, $completedCount, $requiredCompleters, $completerName, $domain);
                 }
 
                 // Notify completer
-                $fcmNotification->notifyCompletionConfirmation($currentUserId, $requestName, $completedCount, $requiredCompleters);
+                $fcmNotification->notifyCompletionConfirmation($currentUserId, $requestName, $completedCount, $requiredCompleters, $domain);
 
                 return redirect()->route('requests.all')
                     ->with('success', "You've completed '{$requestName}'! ({$completedCount}/{$requiredCompleters} completed, {$remaining} more needed)");

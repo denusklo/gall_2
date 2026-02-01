@@ -26,7 +26,8 @@ class FcmController extends Controller
     {
         $request->validate([
             'token' => 'required|string',
-            'device_info' => 'nullable|string|max:255'
+            'device_info' => 'nullable|string|max:255',
+            'domain' => 'nullable|string|max:255'
         ]);
 
         $user = $request->user();
@@ -41,8 +42,9 @@ class FcmController extends Controller
 
         $token = $request->input('token');
         $deviceInfo = $request->input('device_info');
+        $domain = $request->input('domain');
 
-        $result = $this->fcmTokenService->storeToken($uid, $token, $deviceInfo);
+        $result = $this->fcmTokenService->storeToken($uid, $token, $deviceInfo, $domain);
 
         if ($result) {
             return response()->json([
@@ -155,6 +157,123 @@ class FcmController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Test notification sent successfully'
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to send test notification'
+        ], 500);
+    }
+
+    /**
+     * Send test notification to a user by Firebase UID
+     * Sends to all devices/tokens registered for the user
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function sendTestToUser(Request $request)
+    {
+        $request->validate([
+            'firebase_uid' => 'required|string',
+            'title' => 'nullable|string|max:255',
+            'body' => 'nullable|string|max:500'
+        ]);
+
+        $firebaseUid = $request->input('firebase_uid');
+        $title = $request->input('title', 'Test Notification');
+        $body = $request->input('body', 'This is a test notification from the admin panel');
+
+        // Get current domain - use X-Forwarded-Host header if available (Vercel/LB)
+        // Otherwise fall back to request host
+        $host = $request->header('X-Forwarded-Host') ?? $request->getHost();
+        $scheme = $request->header('X-Forwarded-Proto') ?? ($request->secure() ? 'https' : 'http');
+        $domain = $scheme . '://' . $host;
+
+        // Log domain detection for debugging
+        Log::info('[TEST NOTIFICATION] Domain detection', [
+            'x_forwarded_host' => $request->header('X-Forwarded-Host'),
+            'x_forwarded_proto' => $request->header('X-Forwarded-Proto'),
+            'request_host' => $request->getHost(),
+            'request_secure' => $request->secure(),
+            'detected_host' => $host,
+            'detected_scheme' => $scheme,
+            'final_domain' => $domain
+        ]);
+
+        /** @var \App\Services\FcmTokenService */
+        $fcmTokenService = app(FcmTokenService::class);
+
+        // Get all tokens for this user
+        $allTokens = $fcmTokenService->getUserTokens($firebaseUid);
+
+        // Get tokens filtered by domain
+        $domainTokens = $fcmTokenService->getUserTokensForDomain($firebaseUid, $domain);
+
+        Log::info('[TEST NOTIFICATION] Preparing to send', [
+            'firebase_uid' => $firebaseUid,
+            'request_domain' => $domain,
+            'all_tokens_count' => count($allTokens),
+            'domain_tokens_count' => count($domainTokens),
+            'all_tokens' => array_map(function($token) {
+                return substr($token, 0, 30) . '...';
+            }, $allTokens),
+            'domain_tokens' => array_map(function($token) {
+                return substr($token, 0, 30) . '...';
+            }, $domainTokens)
+        ]);
+
+        // Check if user has any tokens for this domain
+        if (empty($domainTokens)) {
+            $message = empty($allTokens)
+                ? 'User has no registered FCM tokens on any domain'
+                : "User has " . count($allTokens) . " token(s) but none registered for domain: {$domain}";
+
+            Log::warning('[TEST NOTIFICATION] No tokens for domain', [
+                'firebase_uid' => $firebaseUid,
+                'domain' => $domain,
+                'all_tokens_count' => count($allTokens)
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'has_tokens' => false,
+                'all_tokens_count' => count($allTokens),
+                'domain_tokens_count' => 0,
+                'requested_domain' => $domain
+            ], 400);
+        }
+
+        /** @var \App\Services\FcmNotificationService */
+        $fcmNotification = app(\App\Services\FcmNotificationService::class);
+
+        $result = $fcmNotification->sendToUser(
+            $firebaseUid,
+            $title,
+            $body,
+            'info',
+            ['type' => 'test_notification'],
+            $domain
+        );
+
+        if ($result) {
+            Log::info('[TEST NOTIFICATION] Sent successfully', [
+                'firebase_uid' => $firebaseUid,
+                'domain' => $domain,
+                'tokens_sent' => count($domainTokens),
+                'title' => $title
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Test notification sent successfully to ' . count($domainTokens) . ' device(s) on ' . $domain,
+                'domain' => $domain,
+                'tokens_sent' => count($domainTokens),
+                'tokens_preview' => array_map(function($token) {
+                    return substr($token, 0, 30) . '...';
+                }, $domainTokens)
             ]);
         }
 

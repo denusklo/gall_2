@@ -10,6 +10,7 @@ use App\Http\Controllers\Firebase\FirebaseAuthController;
 use App\Http\Controllers\Firebase\FirebaseUserController;
 use App\Http\Controllers\Firebase\FirebaseAdminController;
 use App\Http\Controllers\Auth\UnifiedAuthController;
+use App\Http\Controllers\Api\AuthController;
 use Kreait\Laravel\Firebase\Facades\FirebaseAuth;
 
 
@@ -46,34 +47,7 @@ Route::middleware(['auth'])->group(function () {
     })->name('galleries.index');
 });
 
-Route::middleware(\App\Http\Middleware\UnifiedAuthMiddleware::class)->get('/apiv/_1/token', function (Request $request) {
-    $user = $request->user();
-    $currentFirebaseUid = session('verified_user_id');
-
-    // Check if we have a cached token and if it's still valid for the current Firebase user
-    $cachedTokenUid = session('api_token_firebase_uid');
-
-    // Regenerate token if:
-    // 1. No cached token exists
-    // 2. Firebase user has changed (current Firebase UID != cached token's Firebase UID)
-    // 3. User doesn't match the expected Firebase UID
-    $shouldRegenerate = !session('api_token') ||
-                        $cachedTokenUid !== $currentFirebaseUid ||
-                        ($currentFirebaseUid && $user->firebase_uid !== $currentFirebaseUid);
-
-    if ($shouldRegenerate) {
-        // Revoke all existing tokens for this user to prevent stale token usage
-        $user->tokens()->delete();
-        $token = $user->createToken('auth-token')->plainTextToken;
-
-        // Cache the new token and associated Firebase UID in session
-        session(['api_token' => $token, 'api_token_firebase_uid' => $currentFirebaseUid]);
-    } else {
-        $token = session('api_token');
-    }
-
-    return response()->json(['token' => $token]);
-});
+Route::middleware(\App\Http\Middleware\UnifiedAuthMiddleware::class)->get('/apiv/_1/token', [AuthController::class, 'getToken']);
 
 Route::middleware(['guest'])->prefix('mysql')->as('mysql.')->group(function () {
     Route::get('/register', [UserController::class, 'register'])->name('register');
@@ -138,6 +112,17 @@ Route::get('/fcm-config.js', function() {
         ->header('Content-Type', 'application/javascript')
         ->header('Cache-Control', 'public, max-age=3600');
 })->name('fcm.config');
+
+// FCM Service Worker Keep-Alive Endpoint
+// Called by service worker to stay alive in Firefox (which aggressively kills idle SWs)
+Route::get('/fcm-sw-keep-alive', function() {
+    return response()->json([
+        'status' => 'ok',
+        'timestamp' => now()->toIso8601String(),
+        'message' => 'Service worker keep-alive ping received'
+    ])->header('Cache-Control', 'no-store, no-cache, must-revalidate')
+      ->header('Content-Type', 'application/json');
+})->name('fcm.sw.keepalive');
 
 Route::middleware( ['firebase.auth'] )->group(function() {
 

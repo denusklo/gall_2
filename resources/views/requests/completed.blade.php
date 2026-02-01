@@ -9,7 +9,7 @@
                 <div class="card-header">
                     <div class="d-flex justify-content-between align-items-center flex-wrap">
                         <h5 class="mb-0">Completed Requests</h5>
-                        <div class="mt-2 mt-md-0 d-flex align-items-center">
+                        <div class="mt-2 mt-md-0 d-flex align-items-center flex-wrap flex-gap-y">
                             <div class="mr-2">
                                 <div class="input-group input-group-sm" style="width: 250px;">
                                     <input type="text" id="searchInput" class="form-control" placeholder="Search all columns..." value="{{ request('search') }}">
