@@ -165,4 +165,70 @@ class FcmController extends Controller
             'message' => 'Failed to send test notification'
         ], 500);
     }
+
+    /**
+     * Send test notification to a user by Firebase UID
+     * Sends to all devices/tokens registered for the user
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function sendTestToUser(Request $request)
+    {
+        $request->validate([
+            'firebase_uid' => 'required|string',
+            'title' => 'nullable|string|max:255',
+            'body' => 'nullable|string|max:500'
+        ]);
+
+        $firebaseUid = $request->input('firebase_uid');
+        $title = $request->input('title', 'Test Notification');
+        $body = $request->input('body', 'This is a test notification from the admin panel');
+
+        /** @var \App\Services\FcmTokenService */
+        $fcmTokenService = app(FcmTokenService::class);
+
+        // Check if user has any tokens
+        if (!$fcmTokenService->hasTokens($firebaseUid)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User has no registered FCM tokens',
+                'has_tokens' => false
+            ], 400);
+        }
+
+        // Get current domain from request for filtering
+        $domain = $request->getSchemeAndHttpHost();
+
+        /** @var \App\Services\FcmNotificationService */
+        $fcmNotification = app(\App\Services\FcmNotificationService::class);
+
+        $result = $fcmNotification->sendToUser(
+            $firebaseUid,
+            $title,
+            $body,
+            'info',
+            ['type' => 'test_notification'],
+            $domain
+        );
+
+        if ($result) {
+            Log::info('Test notification sent to user', [
+                'firebase_uid' => $firebaseUid,
+                'domain' => $domain,
+                'title' => $title
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Test notification sent successfully to all user devices',
+                'domain' => $domain
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to send test notification'
+        ], 500);
+    }
 }

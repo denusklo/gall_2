@@ -89,6 +89,7 @@ Route::prefix('_1')->group(function () {
             Route::delete('/token', [FcmController::class, 'removeToken']);
             Route::get('/tokens', [FcmController::class, 'getTokens']);
             Route::post('/test', [FcmController::class, 'testNotification']);
+            Route::post('/test-user', [FcmController::class, 'sendTestToUser']);
         });
 
         // Notifications routes
