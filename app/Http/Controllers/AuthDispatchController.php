@@ -10,20 +10,20 @@ class AuthDispatchController extends Controller
 {
     public function dispatchHome(Request $request)
     {
-        // Check Firebase auth first
-        $firebaseAuth = new FirebaseAuthController();
-        if ($firebaseAuth->authentication()) {
-            // Redirect to Firebase user home
+        // Check Laravel auth first - if session expired, go to login
+        if (Auth::check()) {
+            // Check Firebase auth only if Laravel session is active
+            $firebaseAuth = new FirebaseAuthController();
+            if ($firebaseAuth->authentication()) {
+                // Redirect to Firebase user home
+                return app()->call([app()->make(RequestController::class), 'index']);
+            }
+
+            // Redirect to requests page (same as Firebase users)
             return app()->call([app()->make(RequestController::class), 'index']);
         }
-        
-        // Check Laravel auth
-        if (Auth::check()) {
-            // Redirect to Laravel user home
-            return app()->call([app()->make(HomeController::class), 'index']);
-        }
-        
-        // No authentication found, redirect to login
+
+        // Laravel session expired - redirect to login
         return redirect()->route('login');
     }
 }

@@ -80,9 +80,22 @@ class FcmNotificationService
 
             foreach ($tokens as $token) {
                 try {
+                    // Create WebPushConfig for Firefox support
+                    // Firefox uses Mozilla's Push Service and needs WebPush configuration
+                    $webPushConfig = WebPushConfig::fromArray([
+                        'fcm_options' => [
+                            'link' => url('/requests/my')
+                        ],
+                        // Add headers for Firefox compatibility
+                        'headers' => [
+                            'TTL' => '3600' // 1 hour TTL for push message
+                        ]
+                    ]);
+
                     $targetedMessage = CloudMessage::withTarget('token', $token)
                         ->withNotification($notification)
-                        ->withData(array_merge($data, ['type' => $type]));
+                        ->withData(array_merge($data, ['type' => $type]))
+                        ->withWebPushConfig($webPushConfig);
 
                     $this->messaging->send($targetedMessage);
                     $successCount++;
@@ -127,9 +140,20 @@ class FcmNotificationService
         try {
             $notification = FirebaseNotification::create($title, $body);
 
+            // Add WebPushConfig for Firefox support
+            $webPushConfig = WebPushConfig::fromArray([
+                'fcm_options' => [
+                    'link' => url('/requests/my')
+                ],
+                'headers' => [
+                    'TTL' => '3600'
+                ]
+            ]);
+
             $message = CloudMessage::withTarget('token', $token)
                 ->withNotification($notification)
-                ->withData($data);
+                ->withData($data)
+                ->withWebPushConfig($webPushConfig);
 
             $this->messaging->send($message);
 

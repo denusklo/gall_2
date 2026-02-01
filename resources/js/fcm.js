@@ -19,6 +19,7 @@ const firebaseConfig = {
 const FcmService = {
     messaging: null,
     token: null,
+    swRegistration: null, // Store service worker registration
 
     /**
      * Initialize FCM
@@ -39,10 +40,10 @@ const FcmService = {
 
             // Register service worker
             console.log('[FCM] Registering service worker...');
-            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            this.swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
                 scope: '/'
             });
-            console.log('[FCM] Service Worker registered:', registration);
+            console.log('[FCM] Service Worker registered:', this.swRegistration);
 
             // Wait for service worker to be ready
             await navigator.serviceWorker.ready;
@@ -85,9 +86,15 @@ const FcmService = {
                 return false;
             }
 
-            // Get FCM token
+            // Use the stored service worker registration
+            // This prevents Firebase from creating its own internal SW
+            console.log('[FCM] Using SW registration for getToken:', this.swRegistration?.scope);
+
+            // Get FCM token with explicit service worker registration
+            // This prevents Firebase from creating its own internal SW
             const currentToken = await this.messaging.getToken({
-                vapidKey: window.FIREBASE_CONFIG?.vapidKey || ''
+                vapidKey: window.FIREBASE_CONFIG?.vapidKey || '',
+                serviceWorkerRegistration: this.swRegistration
             });
 
             if (!currentToken) {
@@ -494,6 +501,26 @@ const FcmService = {
         }
     }
 };
+
+// ========================================
+// SERVICE WORKER MESSAGE HANDLER
+// Handles messages from the service worker
+// (e.g., keep-alive pings to maintain Firefox connection)
+// ========================================
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        const data = event.data;
+
+        // Handle keep-alive messages silently
+        if (data && data.type === 'fcm-keep-alive') {
+            console.log('[FCM] Keep-alive ping received from service worker');
+            return;
+        }
+
+        // Log other messages for debugging
+        console.log('[FCM] Message from service worker:', data);
+    });
+}
 
 // Initialize FCM when DOM is ready
 document.addEventListener('DOMContentLoaded', async function() {
