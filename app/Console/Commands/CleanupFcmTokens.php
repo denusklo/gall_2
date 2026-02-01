@@ -16,6 +16,7 @@ class CleanupFcmTokens extends Command
                             {--uid= : Specific Firebase UID to clean up (optional, default: all users)}
                             {--duplicates : Clean up duplicate tokens per domain (keeps most recent)}
                             {--old : Clean up old tokens without domain information}
+                            {--invalid : Validate and remove invalid tokens}
                             {--all : Run all cleanup operations}';
 
     /**
@@ -33,13 +34,15 @@ class CleanupFcmTokens extends Command
     public function handle()
     {
         $fcmTokenService = app(FcmTokenService::class);
+        $fcmNotificationService = app(\App\Services\FcmNotificationService::class);
 
         $uid = $this->option('uid');
         $cleanOld = $this->option('old') || $this->option('all');
         $cleanDuplicates = $this->option('duplicates') || $this->option('all');
+        $cleanInvalid = $this->option('invalid') || $this->option('all');
 
         // If no specific option is provided, default to cleaning old tokens
-        if (!$cleanOld && !$cleanDuplicates) {
+        if (!$cleanOld && !$cleanDuplicates && !$cleanInvalid) {
             $cleanOld = true;
         }
 
@@ -81,10 +84,59 @@ class CleanupFcmTokens extends Command
             }
         }
 
+        // Clean up invalid tokens
+        if ($cleanInvalid) {
+            $this->line("\n" . str_repeat('-', 50));
+
+            if ($uid) {
+                $this->info('Validating and removing invalid tokens for user...');
+                $result = $this->cleanInvalidTokens($uid, $fcmTokenService, $fcmNotificationService);
+                $this->line("Invalid tokens removed: {$result['cleaned']}");
+                $totalCleaned += $result['cleaned'];
+            } else {
+                $this->warn('Invalid token validation requires a specific user UID (--uid option)');
+                $this->line('Skipping invalid token cleanup for all users (performance protection)');
+            }
+        }
+
         $this->line("\n" . str_repeat('-', 50));
         $this->info("Total tokens cleaned: {$totalCleaned}");
         $this->line('Cleanup completed!');
 
         return 0;
+    }
+
+    /**
+     * Validate and remove invalid FCM tokens for a user
+     *
+     * @param string $uid Firebase UID
+     * @param FcmTokenService $tokenService
+     * @param \App\Services\FcmNotificationService $notificationService
+     * @return array
+     */
+    protected function cleanInvalidTokens($uid, $tokenService, $notificationService)
+    {
+        $tokens = $tokenService->getUserTokens($uid);
+        $cleaned = 0;
+
+        if (empty($tokens)) {
+            return ['cleaned' => 0];
+        }
+
+        $this->line("Found " . count($tokens) . " tokens to validate...");
+
+        foreach ($tokens as $token) {
+            $this->line("Validating token: " . substr($token, 0, 20) . "...");
+
+            if (!$notificationService->validateToken($token)) {
+                $this->line("  <fg=red>Token is invalid, removing...</>");
+                $tokenService->removeToken($uid, $token);
+                $cleaned++;
+            } else {
+                $this->line("  <fg=green>Token is valid</>");
+            }
+        }
+
+        return ['cleaned' => $cleaned];
     }
 }

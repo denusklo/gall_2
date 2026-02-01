@@ -105,6 +105,17 @@ const FcmService = {
             // Save token
             this.token = currentToken;
 
+            // Log current FCM token info
+            const domain = window.location.origin;
+            const deviceInfo = this.getDeviceInfo();
+            console.log('[FCM] ========================================');
+            console.log('[FCM] Current FCM Token Info:');
+            console.log('[FCM] Token:', currentToken.substring(0, 30) + '...');
+            console.log('[FCM] Full Token:', currentToken);
+            console.log('[FCM] Domain:', domain);
+            console.log('[FCM] Device:', deviceInfo);
+            console.log('[FCM] ========================================');
+
             // Register token with server
             await this.registerTokenWithServer(currentToken);
 
@@ -563,3 +574,27 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // Make FcmService available globally
 window.FcmService = FcmService;
+
+// Global debug function to show current FCM info
+window.showFcmInfo = function() {
+    console.log('[FCM DEBUG] ========================================');
+    console.log('[FCM DEBUG] Current FCM Status:');
+    console.log('[FCM DEBUG] ----------------------------------------');
+    console.log('[FCM DEBUG] Token:', FcmService.token ? FcmService.token.substring(0, 30) + '...' : 'NOT SET');
+    console.log('[FCM DEBUG] Full Token:', FcmService.token || 'NOT SET');
+    console.log('[FCM DEBUG] Domain:', window.location.origin);
+    console.log('[FCM DEBUG] Device:', FcmService.getDeviceInfo());
+    console.log('[FCM DEBUG] Service Worker:', navigator.serviceWorker.controller ? 'ACTIVE' : 'NOT ACTIVE');
+    console.log('[FCM DEBUG] ----------------------------------------');
+    console.log('[FCM DEBUG] Usage: Call showFcmInfo() in console to see this info');
+    console.log('[FCM DEBUG] ========================================');
+
+    return {
+        token: FcmService.token,
+        domain: window.location.origin,
+        device: FcmService.getDeviceInfo(),
+        swActive: !!navigator.serviceWorker.controller
+    };
+};
+
+console.log('[FCM] Debug function available: showFcmInfo()');

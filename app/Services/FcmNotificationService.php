@@ -109,10 +109,36 @@ class FcmNotificationService
                     $successCount++;
                 } catch (\Exception $e) {
                     $failCount++;
+                    $errorMsg = $e->getMessage();
+
                     Log::warning('Failed to send to specific token', [
                         'token' => substr($token, 0, 20) . '...',
-                        'error' => $e->getMessage()
+                        'error' => $errorMsg
                     ]);
+
+                    // Check if token is invalid/unregistered and clean it up
+                    if (
+                        strpos($errorMsg, 'not known to the Firebase project') !== false ||
+                        strpos($errorMsg, 'unregistered') !== false ||
+                        strpos($errorMsg, 'invalid') !== false ||
+                        $e->getCode() === 404
+                    ) {
+                        Log::info('Cleaning up invalid FCM token', [
+                            'firebase_uid' => $firebaseUid,
+                            'token' => substr($token, 0, 20) . '...'
+                        ]);
+
+                        // Remove invalid token from Firebase
+                        try {
+                            $fcmTokenService = app(FcmTokenService::class);
+                            $fcmTokenService->removeToken($firebaseUid, $token);
+                            Log::info('Invalid FCM token removed successfully');
+                        } catch (\Exception $cleanupError) {
+                            Log::error('Failed to remove invalid token', [
+                                'error' => $cleanupError->getMessage()
+                            ]);
+                        }
+                    }
                 }
             }
 
