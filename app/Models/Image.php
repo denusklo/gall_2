@@ -149,10 +149,20 @@ class Image extends Model {
         return in_array($this->file_type, ['application', 'text']);
     }
 
+    /**
+     * Determine if the image is stored on Vercel Blob.
+     *
+     * @return bool
+     */
     public function isVercelStorage() {
         return $this->storage_provider === self::STORAGE_VERCEL;
     }
 
+    /**
+     * Determine if the image is stored on Supabase.
+     *
+     * @return bool
+     */
     public function isSupabaseStorage() {
         return $this->storage_provider === self::STORAGE_SUPABASE;
     }
