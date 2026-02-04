@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Storage\StorageCredentialService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -11,15 +12,11 @@ use Illuminate\Support\Facades\Config;
 
 class GalleryStorageController extends Controller
 {
-    protected $supabaseUrl;
-    protected $supabaseKey;
-    protected $storageBucket;
+    protected StorageCredentialService $credentialService;
 
-    public function __construct()
+    public function __construct(StorageCredentialService $credentialService)
     {
-        $this->supabaseUrl = config('services.supabase.url');
-        $this->supabaseKey = config('services.supabase.key');
-        $this->storageBucket = config('services.supabase.storage_bucket', 'gallery-uploads');
+        $this->credentialService = $credentialService;
     }
 
     /**
@@ -38,27 +35,32 @@ class GalleryStorageController extends Controller
         ]);
 
         try {
+            // Get user's Supabase credentials
+            $creds = $this->credentialService->getSupabaseCredentials($request->user());
+
             // Generate a unique file path
             $filename = Str::slug(pathinfo($request->filename, PATHINFO_FILENAME)) . '-' . Str::random(8);
             $extension = pathinfo($request->filename, PATHINFO_EXTENSION);
             $filePath = date('Y/m/d') . '/' . $filename . '.' . $extension;
 
+            $bucket = $creds['bucket'];
+
             // For direct uploads to a public bucket
-            $uploadUrl = "{$this->supabaseUrl}/storage/v1/object/{$this->storageBucket}/{$filePath}";
-            
-            // Generate the public URL for the file
-            $fileUrl = "{$this->supabaseUrl}/storage/v1/object/public/{$this->storageBucket}/{$filePath}";
+            $uploadUrl = "{$creds['url']}/storage/v1/object/{$bucket}/{$filePath}";
+
+            // Generate public URL for file
+            $fileUrl = "{$creds['url']}/storage/v1/object/public/{$bucket}/{$filePath}";
 
             return response()->json([
                 'uploadUrl' => $uploadUrl,
                 'method' => 'PUT',  // Use PUT for direct uploads
                 'headers' => [
-                    'authorization' => 'Bearer ' . $this->supabaseKey,
+                    'authorization' => 'Bearer ' . $creds['key'],
                     'Content-Type' => $request->content_type,
                     'x-upsert' => 'true'  // This allows overwriting if a file exists
                 ],
                 'path' => $filePath,
-                'bucket' => $this->storageBucket,
+                'bucket' => $bucket,
                 'fileUrl' => $fileUrl,
             ]);
         } catch (\Exception $e) {
@@ -70,17 +72,20 @@ class GalleryStorageController extends Controller
     }
 
     /**
-     * Check if the storage bucket exists
+     * Check if storage bucket exists
      *
      * @return \Illuminate\Http\JsonResponse
      */
     public function checkBucket()
     {
         try {
+            $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+            $bucket = $creds['bucket'];
+
             $response = Http::withHeaders([
-                'apikey' => $this->supabaseKey,
-                'Authorization' => 'Bearer ' . $this->supabaseKey,
-            ])->get("{$this->supabaseUrl}/storage/v1/bucket/{$this->storageBucket}");
+                'apikey' => $creds['key'],
+                'Authorization' => 'Bearer ' . $creds['key'],
+            ])->get("{$creds['url']}/storage/v1/bucket/{$bucket}");
 
             if ($response->successful()) {
                 return response()->json([
@@ -114,10 +119,13 @@ class GalleryStorageController extends Controller
         ]);
 
         try {
+            $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+            $bucket = $creds['bucket'];
+
             $response = Http::withHeaders([
-                'apikey' => $this->supabaseKey,
-                'Authorization' => 'Bearer ' . $this->supabaseKey,
-            ])->delete("{$this->supabaseUrl}/storage/v1/object/{$this->storageBucket}/{$request->path}");
+                'apikey' => $creds['key'],
+                'Authorization' => 'Bearer ' . $creds['key'],
+            ])->delete("{$creds['url']}/storage/v1/object/{$bucket}/{$request->path}");
 
             if ($response->successful()) {
                 return response()->json(['message' => 'File deleted successfully']);

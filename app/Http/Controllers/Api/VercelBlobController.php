@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Image;
+use App\Services\Storage\StorageCredentialService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
@@ -11,6 +12,13 @@ use Illuminate\Support\Str;
 
 class VercelBlobController extends Controller
 {
+    protected StorageCredentialService $credentialService;
+
+    public function __construct(StorageCredentialService $credentialService)
+    {
+        $this->credentialService = $credentialService;
+    }
+
     /**
      * ALTERNATIVE APPROACH: Direct server-side upload to Vercel Blob
      * Instead of client token, we upload from the server
@@ -31,9 +39,9 @@ class VercelBlobController extends Controller
 
         try {
             $file = $request->file('file');
-            $readWriteToken = config('services.vercel.blob_read_write_token');
+            $creds = $this->credentialService->getVercelCredentials($request->user());
 
-            if (empty($readWriteToken)) {
+            if (empty($creds['token'])) {
                 throw new \Exception('Vercel Blob read-write token is not configured');
             }
 
@@ -47,10 +55,10 @@ class VercelBlobController extends Controller
             $pathname = date('Y/m/d') . '/' . $cleanFilename . '-' . Str::random(8) . '.' . $extension;
 
             // Upload directly to Vercel Blob using server-side PUT
-            $uploadUrl = "https://blob.vercel-storage.com/{$pathname}";
+            $uploadUrl = $creds['store_url'] . "/{$pathname}";
 
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $readWriteToken,
+                'Authorization' => 'Bearer ' . $creds['token'],
                 'x-content-type' => $file->getMimeType(),
             ])->attach(
                 'file',
@@ -126,6 +134,14 @@ class VercelBlobController extends Controller
         ]);
 
         try {
+            // Get the read-write token from user's credentials
+            $creds = $this->credentialService->getVercelCredentials($request->user());
+            $readWriteToken = $creds['token'];
+
+            if (empty($readWriteToken)) {
+                throw new \Exception('Vercel Blob read-write token is not configured');
+            }
+
             // Generate a unique pathname for the file
             $originalFilename = pathinfo($request->filename, PATHINFO_FILENAME);
             $extension = pathinfo($request->filename, PATHINFO_EXTENSION);
@@ -163,13 +179,6 @@ class VercelBlobController extends Controller
             // Convert payload to JSON then base64
             $payloadJson = json_encode($payload, JSON_UNESCAPED_SLASHES);
             $payloadBase64 = base64_encode($payloadJson);
-
-            // Get the read-write token
-            $readWriteToken = config('services.vercel.blob_read_write_token');
-
-            if (empty($readWriteToken)) {
-                throw new \Exception('Vercel Blob read-write token is not configured');
-            }
 
             // Generate HMAC SHA256 signature of the base64 payload
             $signature = hash_hmac('sha256', $payloadBase64, $readWriteToken, false);
@@ -285,11 +294,9 @@ class VercelBlobController extends Controller
         ]);
 
         try {
-            $token = config('services.vercel.blob_read_write_token');
-            // Use the Vercel Blob API URL, not the storage URL
-            // API: https://vercel.com/api/blob
-            // Storage: https://*.public.blob.vercel-storage.com
-            $apiUrl = config('services.vercel.blob_api_url', 'https://vercel.com/api/blob');
+            $creds = $this->credentialService->getVercelCredentials($request->user());
+            $token = $creds['token'];
+            $apiUrl = $creds['api_url'];
 
             Log::info('Deleting Vercel blob', ['url' => $request->url]);
 
@@ -334,12 +341,11 @@ class VercelBlobController extends Controller
     public function listBlobs(Request $request)
     {
         try {
-            $token = config('services.vercel.blob_read_write_token');
-            $storeUrl = config('services.vercel.blob_store_url');
-            
+            $creds = $this->credentialService->getVercelCredentials($request->user());
+
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-            ])->get($storeUrl . '/list', [
+                'Authorization' => 'Bearer ' . $creds['token'],
+            ])->get($creds['store_url'] . '/list', [
                 'limit' => $request->get('limit', 100),
                 'cursor' => $request->get('cursor'),
             ]);

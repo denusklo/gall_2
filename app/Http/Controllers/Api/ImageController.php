@@ -5,20 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Image;
 use App\Models\Category;
+use App\Services\Storage\StorageCredentialService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 
 class ImageController extends Controller {
-    protected $supabaseUrl;
-    protected $supabaseKey;
-    protected $supabaseServiceKey;
+    protected StorageCredentialService $credentialService;
 
-    public function __construct() {
-        $this->supabaseUrl = config('services.supabase.url');
-        $this->supabaseKey = config('services.supabase.key');
-        $this->supabaseServiceKey = config('services.supabase.service_key');
+    public function __construct(StorageCredentialService $credentialService) {
+        $this->credentialService = $credentialService;
     }
 
     /**
@@ -206,12 +203,14 @@ class ImageController extends Controller {
         try {
             // Delete file from storage based on provider
             if ($image->isSupabaseStorage()) {
-                // Delete from Supabase Storage
+                // Delete from Supabase Storage using user's credentials
                 if ($image->storage_path && $image->storage_bucket) {
+                    $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+
                     Http::withHeaders([
-                        'apikey' => $this->supabaseKey,
-                        'Authorization' => 'Bearer ' . $this->supabaseKey,
-                    ])->delete("{$this->supabaseUrl}/storage/v1/object/{$image->storage_bucket}/{$image->storage_path}");
+                        'apikey' => $creds['key'],
+                        'Authorization' => 'Bearer ' . $creds['key'],
+                    ])->delete("{$creds['url']}/storage/v1/object/{$image->storage_bucket}/{$image->storage_path}");
                 }
             }
             // Note: Vercel deletion is handled by the frontend via /apiv/_1/vercel/delete-blob
@@ -309,18 +308,21 @@ class ImageController extends Controller {
             $file = $request->file('file');
             $filename = time() . '_' . $file->getClientOriginalName();
 
+            // Get user's Supabase credentials
+            $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+
             // Get file contents
             $fileContents = file_get_contents($file->getRealPath());
 
             // First, upload the file using Laravel's HTTP Client
             $uploadResponse = Http::withHeaders([
                 'Content-Type' => $file->getMimeType(),
-                'apikey' => $this->supabaseServiceKey,
-                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
+                'apikey' => $creds['service_key'],
+                'Authorization' => 'Bearer ' . $creds['service_key']
             ])->withBody(
                 $fileContents, $file->getMimeType()
             )->post(
-                $this->supabaseUrl . '/storage/v1/object/gallery-uploads/' . $filename
+                $creds['url'] . '/storage/v1/object/' . $creds['bucket'] . '/' . $filename
             );
 
             if (!$uploadResponse->successful()) {
@@ -330,10 +332,10 @@ class ImageController extends Controller {
             // Now generate a signed URL for the file
             $signResponse = Http::withHeaders([
                 'Content-Type' => 'application/json',
-                'apikey' => $this->supabaseServiceKey,
-                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
+                'apikey' => $creds['service_key'],
+                'Authorization' => 'Bearer ' . $creds['service_key']
             ])->post(
-                $this->supabaseUrl . '/storage/v1/object/sign/gallery-uploads/' . $filename,
+                $creds['url'] . '/storage/v1/object/sign/' . $creds['bucket'] . '/' . $filename,
                 ['expiresIn' => 604800] // 7 days
             );
 
@@ -350,7 +352,7 @@ class ImageController extends Controller {
             $image->title = $request->title;
             $image->description = $request->description;
             $image->storage_path = $filename;
-            $image->storage_bucket = 'gallery-uploads';
+            $image->storage_bucket = $creds['bucket'];
             $image->storage_url = $signedUrl;
             $image->storage_provider = 'supabase';
             $image->filename = $file->getClientOriginalName();
@@ -377,15 +379,19 @@ class ImageController extends Controller {
         $image = Image::findOrFail($imageId);
 
         try {
+            // Get user's Supabase credentials
+            $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+
             // Make a request to Supabase to generate a signed URL
             $path = $image->storage_path;
+            $bucket = $image->storage_bucket ?? $creds['bucket'];
 
             $signResponse = Http::withHeaders([
                 'Content-Type' => 'application/json',
-                'apikey' => $this->supabaseServiceKey,
-                'Authorization' => 'Bearer ' . $this->supabaseServiceKey
+                'apikey' => $creds['service_key'],
+                'Authorization' => 'Bearer ' . $creds['service_key']
             ])->post(
-                $this->supabaseUrl . '/storage/v1/object/sign/gallery-uploads/' . $path,
+                $creds['url'] . '/storage/v1/object/sign/' . $bucket . '/' . $path,
                 ['expiresIn' => 604800] // 7 days
             );
 
@@ -406,7 +412,7 @@ class ImageController extends Controller {
             $image->storage_url = $data['signedURL'];
             $image->save();
 
-            return response()->json(['signedUrl' => $this->supabaseUrl . $data['signedURL']]);
+            return response()->json(['signedUrl' => $creds['url'] . $data['signedURL']]);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to refresh signed URL: ' . $e->getMessage()], 500);
         }
