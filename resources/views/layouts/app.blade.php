@@ -113,6 +113,13 @@
                                 </a>
                             </li>
 
+                            <!-- Storage Settings Link -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('settings.storage') }}">
+                                    {{ __('Storage Settings') }}
+                                </a>
+                            </li>
+
                             @if ($isAdmin)
                                 <!-- Admin Only Links -->
                                 <li class="nav-item">

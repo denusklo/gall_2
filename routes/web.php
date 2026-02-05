@@ -35,6 +35,9 @@ Route::middleware(['auth'])->group(function () {
     // Images route - displays individual images (what used to be called "galleries")
     Route::get('/images', [App\Http\Controllers\GalleryController::class, 'index'])->name('images.index');
 
+    // Storage settings route
+    Route::get('/settings/storage', [App\Http\Controllers\SettingsController::class, 'storage'])->name('settings.storage');
+
     // Galleries route - displays albums/collections
     Route::get('/galleries/albums', [App\Http\Controllers\GalleryController::class, 'albums'])->name('galleries.albums');
 
