@@ -92,7 +92,7 @@
                   type="button"
                   @click="showSupabaseKey = !showSupabaseKey"
                 >
-                  <i :class="showSupabaseKey ? 'bi-eye-slash' : 'bi-eye'"></i>
+                  <i :class="showSupabaseKey ? 'fa-eye-slash' : 'fa-eye'"></i>
                 </button>
               </div>
               <small class="form-text text-muted">
@@ -116,7 +116,7 @@
                   type="button"
                   @click="showSupabaseServiceKey = !showSupabaseServiceKey"
                 >
-                  <i :class="showSupabaseServiceKey ? 'bi-eye-slash' : 'bi-eye'"></i>
+                  <i :class="showSupabaseServiceKey ? 'fa-eye-slash' : 'fa-eye'"></i>
                 </button>
               </div>
               <small class="form-text text-muted">
@@ -187,7 +187,7 @@
                   type="button"
                   @click="showVercelToken = !showVercelToken"
                 >
-                  <i :class="showVercelToken ? 'bi-eye-slash' : 'bi-eye'"></i>
+                  <i :class="showVercelToken ? 'fa-eye-slash' : 'fa-eye'"></i>
                 </button>
               </div>
               <small class="form-text text-muted">
