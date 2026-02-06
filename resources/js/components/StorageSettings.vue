@@ -3,17 +3,10 @@
     <div class="row justify-content-center">
       <div class="col-lg-8">
         <h1 class="mb-4">Storage Settings</h1>
-
-        <!-- Alert for errors -->
-        <div v-if="store.error" class="alert alert-danger alert-dismissible fade show" role="alert">
-          {{ store.error }}
-          <button type="button" class="btn-close" @click="store.clearError()"></button>
-        </div>
-
-        <!-- Success message -->
-        <div v-if="saveSuccess" class="alert alert-success alert-dismissible fade show" role="alert">
-          Storage settings saved successfully!
-          <button type="button" class="btn-close" @click="saveSuccess = false"></button>
+        <div v-if="store.loading" class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
         </div>
 
         <!-- Default Storage Provider Selection -->
@@ -281,6 +274,9 @@ import { ref, computed, onMounted } from 'vue';
 import { useStorageSettingsStore } from '../stores/storageSettings';
 
 const store = useStorageSettingsStore();
+
+console.log('StorageSettings component - store:', store);
+console.log('StorageSettings component - settings value:', store.settings);
 
 const form = ref({
   storage_provider: 'supabase',
