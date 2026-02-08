@@ -2,7 +2,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import axios from 'axios';
-import StorageSettings from './components/StorageSettingsTest.vue';
+import StorageSettings from './components/StorageSettings.vue';
 import { useStorageSettingsStore } from './stores/storageSettings';
 
 // Set up axios defaults
