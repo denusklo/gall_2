@@ -3,6 +3,11 @@
     <div class="row justify-content-center">
       <div class="col-lg-8">
         <h1 class="mb-4">Storage Settings</h1>
+        <p>Debug: store exists = {{ !!store }}</p>
+        <p>Debug: store.loading = {{ store.loading }}</p>
+        <p>Debug: store.error = {{ store.error }}</p>
+        <p>Debug: settings = {{ JSON.stringify(store.settings) }}</p>
+        <p>Debug: hasSupabaseConfig = {{ store.hasSupabaseConfig }}</p>
         <div v-if="store.loading" class="text-center py-5">
           <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
