@@ -286,9 +286,6 @@ import { useStorageSettingsStore } from '../stores/storageSettings';
 
 const store = useStorageSettingsStore();
 
-console.log('StorageSettings component - store:', store);
-console.log('StorageSettings component - settings value:', store.settings);
-
 const form = ref({
   storage_provider: 'supabase',
   supabase_url: '',
