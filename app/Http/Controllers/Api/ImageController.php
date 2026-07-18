@@ -265,18 +265,22 @@ class ImageController extends Controller {
                     ];
                 });
 
-            // Get timeline of uploads (last 12 months)
+            // Get timeline of uploads (last 12 months) — one grouped query instead of 12 counts
+            $monthlyCounts = Image::where('user_id', $userId)
+                ->where('created_at', '>=', now()->subMonths(11)->startOfMonth())
+                ->select(
+                    DB::raw("DATE_FORMAT(created_at, '%Y-%m') as ym"),
+                    DB::raw('COUNT(*) as count')
+                )
+                ->groupBy('ym')
+                ->pluck('count', 'ym');
+
             $timeline = [];
             for ($i = 11; $i >= 0; $i--) {
                 $month = now()->subMonths($i);
-                $count = Image::where('user_id', $userId)
-                    ->whereYear('created_at', $month->year)
-                    ->whereMonth('created_at', $month->month)
-                    ->count();
-
                 $timeline[] = [
                     'month' => $month->format('M Y'),
-                    'count' => $count,
+                    'count' => (int) ($monthlyCounts[$month->format('Y-m')] ?? 0),
                 ];
             }
 
