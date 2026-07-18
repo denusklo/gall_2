@@ -54,5 +54,16 @@ Thumbs.db
 # Markdown files
 *.md
 !README.md
+!CLAUDE.md
 
+# Claude Code harness: settings stay local, rules are version-controlled
 /.claude/*
+!/.claude/rules
+!/.claude/rules/**
+/.claude/rules/*.bak
+
+# CodeGraph index (machine-local)
+/.codegraph/
+
+# Backups made by the harness
+*.bak
