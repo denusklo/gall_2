@@ -131,11 +131,12 @@ class VercelBlobController extends Controller
             'description' => 'nullable|string',
             'category_ids' => 'nullable|array',
             'category_ids.*' => 'exists:categories,id',
+            'credential_id' => 'nullable|integer',
         ]);
 
         try {
-            // Get the read-write token from user's credentials
-            $creds = $this->credentialService->getVercelCredentials($request->user());
+            // Get the read-write token from user's credentials (chosen credential, or default)
+            $creds = $this->credentialService->getVercelCredentials($request->user(), $request->input('credential_id'));
             $readWriteToken = $creds['token'];
 
             if (empty($readWriteToken)) {
@@ -161,6 +162,7 @@ class VercelBlobController extends Controller
                 'description' => $request->description,
                 'category_ids' => $request->category_ids ?? [],
                 'user_id' => auth()->id(),
+                'credential_id' => $request->input('credential_id'),
             ];
 
             // Create the token options payload (this gets signed)
@@ -248,6 +250,7 @@ class VercelBlobController extends Controller
                 'size' => $size,
                 'user_id' => $metadata['user_id'] ?? auth()->id(),
                 'storage_provider' => Image::STORAGE_VERCEL,
+                'storage_credential_id' => $metadata['credential_id'] ?? null,
             ]);
 
             // Attach categories if provided
@@ -291,10 +294,16 @@ class VercelBlobController extends Controller
     {
         $request->validate([
             'url' => 'required|string',
+            'credential_id' => 'nullable|integer',
         ]);
 
         try {
-            $creds = $this->credentialService->getVercelCredentials($request->user());
+            // Use the credential the blob was uploaded with (falls back to default)
+            try {
+                $creds = $this->credentialService->getVercelCredentials($request->user(), $request->input('credential_id'));
+            } catch (\Exception $e) {
+                $creds = $this->credentialService->getVercelCredentials($request->user());
+            }
             $token = $creds['token'];
             $apiUrl = $creds['api_url'];
 

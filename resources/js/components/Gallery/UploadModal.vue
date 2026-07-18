@@ -51,6 +51,19 @@
                         <small class="form-text text-muted">Hold Ctrl (Cmd on Mac) to select multiple categories</small>
                     </div>
 
+                    <div class="form-group">
+                        <label for="credential">Storage credential</label>
+                        <select id="credential" v-model="selectedCredentialId" class="form-control"
+                            :disabled="isUploading || credentials.length === 0">
+                            <option v-for="cred in credentials" :key="cred.id" :value="cred.id">
+                                {{ cred.name }} ({{ cred.provider === 'vercel' ? 'Vercel' : 'Supabase' }}){{ cred.is_default ? ' ★ default' : '' }}
+                            </option>
+                        </select>
+                        <small v-if="credentials.length === 0" class="form-text text-danger">
+                            No storage credentials yet. Add one in Storage Settings before uploading.
+                        </small>
+                    </div>
+
                     <div v-if="previewUrl" class="image-preview">
                         <img :src="previewUrl" alt="Preview">
                     </div>
@@ -74,17 +87,11 @@
                         <button type="button" @click="closeModal" class="btn btn-secondary" :disabled="isUploading">
                             Cancel
                         </button>
-                        <button type="submit" class="btn btn-primary" :disabled="!selectedFile || isUploading">
-                            <span v-if="isUploadingSupabase">
+                        <button type="submit" class="btn btn-primary" :disabled="!selectedFile || isUploading || !selectedCredential">
+                            <span v-if="isUploading">
                                 Uploading... ({{ uploadProgress }}%)
                             </span>
-                            <span v-else>Upload to Supabase</span>
-                        </button>
-                        <button type="button" @click="uploadToVercel" class="btn btn-vercel" :disabled="!selectedFile || isUploading">
-                            <span v-if="isUploadingVercel">
-                                Uploading... ({{ uploadProgress }}%)
-                            </span>
-                            <span v-else>Upload to Vercel</span>
+                            <span v-else>Upload</span>
                         </button>
                     </div>
                 </form>
@@ -106,12 +113,21 @@
 import { ref, computed, onMounted } from 'vue';
 import { useImageStore } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
+import { useStorageCredentialsStore } from '../../stores/storageCredentials';
 
 const emit = defineEmits(['close', 'upload-complete']);
 const imageStore = useImageStore();
 const categoryStore = useCategoryStore();
+const credentialsStore = useStorageCredentialsStore();
 const categoryIds = ref([]);
 const categories = computed(() => categoryStore.categories);
+
+// Storage credential selection (provider is derived from the chosen credential)
+const credentials = computed(() => credentialsStore.credentials);
+const selectedCredentialId = ref(null);
+const selectedCredential = computed(
+  () => credentials.value.find(c => c.id === selectedCredentialId.value) || null
+);
 
 const title = ref('');
 const description = ref('');
@@ -119,16 +135,18 @@ const selectedFile = ref(null);
 const previewUrl = ref('');
 const uploadError = ref('');
 const isSuccess = ref(false);
-const isUploadingVercel = ref(false);
-const isUploadingSupabase = ref(false);
+const isUploadingRef = ref(false);
 
-const isUploading = computed(() => imageStore.loading || isUploadingVercel.value || isUploadingSupabase.value);
+const isUploading = computed(() => imageStore.loading || isUploadingRef.value);
 const uploadProgress = computed(() => imageStore.uploadProgress);
 
-onMounted(() => {
+onMounted(async () => {
   if (categoryStore.categories.length === 0) {
     categoryStore.fetchCategories();
   }
+  await credentialsStore.fetchCredentials();
+  const def = credentials.value.find(c => c.is_default) || credentials.value[0];
+  selectedCredentialId.value = def ? def.id : null;
 });
 
 const handleFileChange = (event) => {
@@ -192,18 +210,26 @@ const uploadFile = async () => {
     uploadError.value = 'Please select a file to upload.';
     return;
   }
+  if (!selectedCredential.value) {
+    uploadError.value = 'Please select a storage credential.';
+    return;
+  }
 
+  const credential = selectedCredential.value;
   uploadError.value = '';
-  isUploadingSupabase.value = true;
+  isUploadingRef.value = true;
 
   try {
-    // Upload using Image store
-    await imageStore.uploadFile(
-      selectedFile.value,
-      title.value,
-      description.value,
-      categoryIds.value
-    );
+    // Route by the chosen credential's provider, passing its id
+    if (credential.provider === 'vercel') {
+      await imageStore.uploadFileToVercel(
+        selectedFile.value, title.value, description.value, categoryIds.value, credential.id
+      );
+    } else {
+      await imageStore.uploadFile(
+        selectedFile.value, title.value, description.value, categoryIds.value, credential.id
+      );
+    }
 
     // Show success message
     isSuccess.value = true;
@@ -222,51 +248,12 @@ const uploadFile = async () => {
   } catch (error) {
     uploadError.value = error.message || 'Failed to upload file. Please try again.';
   } finally {
-    isUploadingSupabase.value = false;
-  }
-};
-
-const uploadToVercel = async () => {
-  if (!selectedFile.value) {
-    uploadError.value = 'Please select a file to upload.';
-    return;
-  }
-
-  uploadError.value = '';
-  isUploadingVercel.value = true;
-
-  try {
-    // Use the Vercel upload method from the image store
-    await imageStore.uploadFileToVercel(
-      selectedFile.value,
-      title.value,
-      description.value,
-      categoryIds.value
-    );
-
-    // Show success message
-    isSuccess.value = true;
-
-    // Notify parent that upload is complete
-    emit('upload-complete');
-
-    // Reset form after a delay
-    setTimeout(() => {
-      title.value = '';
-      description.value = '';
-      categoryIds.value = [];
-      selectedFile.value = null;
-      previewUrl.value = '';
-    }, 300);
-  } catch (error) {
-    uploadError.value = error.message || 'Failed to upload to Vercel. Please try again.';
-  } finally {
-    isUploadingVercel.value = false;
+    isUploadingRef.value = false;
   }
 };
 
 const closeModal = () => {
-    if (isUploading.value || isUploadingVercel.value) {
+    if (isUploading.value) {
         if (!confirm('Upload in progress. Are you sure you want to cancel?')) {
             return;
         }

@@ -51,7 +51,7 @@ export const useImageStore = defineStore('image', {
     },
 
     // Original Supabase upload method
-    async uploadFile(file, title, description = '', categoryIds = []) {
+    async uploadFile(file, title, description = '', categoryIds = [], credentialId = null) {
       this.loading = true;
       this.uploadProgress = 0;
 
@@ -61,6 +61,9 @@ export const useImageStore = defineStore('image', {
         formData.append('file', file);
         formData.append('title', title);
         formData.append('description', description || '');
+        if (credentialId) {
+          formData.append('credential_id', credentialId);
+        }
         if (categoryIds && categoryIds.length > 0) {
           categoryIds.forEach((id, index) => {
             formData.append(`category_ids[${index}]`, id);
@@ -95,7 +98,7 @@ export const useImageStore = defineStore('image', {
     },
 
     // Vercel Blob upload method - Manual implementation (no SDK)
-    async uploadFileToVercel(file, title, description = '', categoryIds = []) {
+    async uploadFileToVercel(file, title, description = '', categoryIds = [], credentialId = null) {
       this.loading = true;
       this.uploadProgress = 0;
 
@@ -108,7 +111,8 @@ export const useImageStore = defineStore('image', {
           size: file.size,
           title: title,
           description: description,
-          category_ids: categoryIds
+          category_ids: categoryIds,
+          credential_id: credentialId ?? null
         });
 
         const { clientToken, pathname, metadata } = tokenResponse.data;
@@ -198,7 +202,8 @@ export const useImageStore = defineStore('image', {
         if (image.storage_provider === 'vercel') {
           console.log('[imageStore] Deleting from Vercel, URL:', image.storage_url);
           await axios.post('/apiv/_1/vercel/delete-blob', {
-            url: image.storage_url
+            url: image.storage_url,
+            credential_id: image.storage_credential_id ?? null
           });
           console.log('[imageStore] Vercel blob deleted successfully');
         }

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\GalleryStorageController;
 use App\Http\Controllers\Api\VercelBlobController;
 use App\Http\Controllers\Api\FcmController;
 use App\Http\Controllers\Api\UserSettingsController;
+use App\Http\Controllers\Api\StorageCredentialController;
 
 /*
 |--------------------------------------------------------------------------
@@ -112,6 +113,21 @@ Route::prefix('_1')->group(function () {
             // Testing endpoints
             Route::post('/test/supabase', [UserSettingsController::class, 'testSupabase']);
             Route::post('/test/vercel', [UserSettingsController::class, 'testVercel']);
+        });
+
+        // Storage Credentials routes (multi-credential support)
+        Route::prefix('storage-credentials')->group(function() {
+            Route::get('/', [StorageCredentialController::class, 'index']);
+            Route::post('/', [StorageCredentialController::class, 'store']);
+            Route::get('/{id}', [StorageCredentialController::class, 'show']);
+            Route::put('/{id}', [StorageCredentialController::class, 'update']);
+            Route::delete('/{id}', [StorageCredentialController::class, 'destroy']);
+            Route::post('/{id}/default', [StorageCredentialController::class, 'setDefault']);
+            Route::post('/{id}/test', [StorageCredentialController::class, 'testCredential']);
+
+            // Testing endpoints (test raw values before saving, e.g. Add modal)
+            Route::post('/test/supabase', [StorageCredentialController::class, 'testSupabase']);
+            Route::post('/test/vercel', [StorageCredentialController::class, 'testVercel']);
         });
     });
 

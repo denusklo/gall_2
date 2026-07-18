@@ -33,6 +33,7 @@ class Image extends Model {
         'storage_bucket',
         'storage_url',
         'storage_provider',
+        'storage_credential_id',
         'filename',
         'mime_type',
         'size',

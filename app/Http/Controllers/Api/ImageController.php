@@ -98,6 +98,7 @@ class ImageController extends Controller {
             'mime_type' => 'required|string',
             'size' => 'required|integer',
             'storage_provider' => 'nullable|string',
+            'credential_id' => 'nullable|integer',
         ]);
 
         try {
@@ -111,6 +112,7 @@ class ImageController extends Controller {
                 'mime_type' => $request->mime_type,
                 'size' => $request->size,
                 'storage_provider' => $request->storage_provider ?? 'supabase',
+                'storage_credential_id' => $request->input('credential_id'),
                 'user_id' => auth()->id(),
             ]);
 
@@ -205,7 +207,7 @@ class ImageController extends Controller {
             if ($image->isSupabaseStorage()) {
                 // Delete from Supabase Storage using user's credentials
                 if ($image->storage_path && $image->storage_bucket) {
-                    $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+                    $creds = $this->supabaseCredsForImage($image);
 
                     Http::withHeaders([
                         'apikey' => $creds['key'],
@@ -301,6 +303,7 @@ class ImageController extends Controller {
             'description' => 'nullable|string',
             'category_ids' => 'nullable|array',
             'category_ids.*' => 'exists:categories,id',
+            'credential_id' => 'nullable|integer',
         ]);
 
         try {
@@ -308,8 +311,8 @@ class ImageController extends Controller {
             $file = $request->file('file');
             $filename = time() . '_' . $file->getClientOriginalName();
 
-            // Get user's Supabase credentials
-            $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+            // Get user's Supabase credentials (chosen credential, or default)
+            $creds = $this->credentialService->getSupabaseCredentials(auth()->user(), $request->input('credential_id'));
 
             // Get file contents
             $fileContents = file_get_contents($file->getRealPath());
@@ -355,6 +358,7 @@ class ImageController extends Controller {
             $image->storage_bucket = $creds['bucket'];
             $image->storage_url = $signedUrl;
             $image->storage_provider = 'supabase';
+            $image->storage_credential_id = $request->input('credential_id');
             $image->filename = $file->getClientOriginalName();
             $image->mime_type = $file->getMimeType();
             $image->size = $file->getSize();
@@ -374,13 +378,26 @@ class ImageController extends Controller {
         }
     }
 
+    /**
+     * Resolve the Supabase credentials an image was uploaded with,
+     * falling back to the user's default if that credential is gone.
+     */
+    private function supabaseCredsForImage(Image $image): array
+    {
+        try {
+            return $this->credentialService->getSupabaseCredentials(auth()->user(), $image->storage_credential_id);
+        } catch (\Exception $e) {
+            return $this->credentialService->getSupabaseCredentials(auth()->user());
+        }
+    }
+
     // Create a route to generate a signed URL
     public function refreshSignedUrl(Request $request, $imageId) {
         $image = Image::findOrFail($imageId);
 
         try {
-            // Get user's Supabase credentials
-            $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+            // Use the credential this image was uploaded with (falls back to default)
+            $creds = $this->supabaseCredsForImage($image);
 
             // Make a request to Supabase to generate a signed URL
             $path = $image->storage_path;

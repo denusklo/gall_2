@@ -7,6 +7,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable
@@ -231,5 +232,25 @@ class User extends Authenticatable
     public function settings(): HasOne
     {
         return $this->hasOne(UserSettings::class);
+    }
+
+    /**
+     * Get user's storage credentials.
+     *
+     * @return HasMany
+     */
+    public function storageCredentials(): HasMany
+    {
+        return $this->hasMany(StorageCredential::class);
+    }
+
+    /**
+     * Get user's default storage credential.
+     *
+     * @return StorageCredential|null
+     */
+    public function defaultStorageCredential(): ?StorageCredential
+    {
+        return $this->storageCredentials()->default()->first();
     }
 }

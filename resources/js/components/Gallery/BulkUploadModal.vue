@@ -27,6 +27,21 @@
                         </small>
                     </div>
                     <div class="form-group">
+                        <label for="credential">Storage credential</label>
+                        <select id="credential" v-model="selectedCredentialId" class="form-control"
+                            :disabled="isUploading || credentials.length === 0">
+                            <option v-for="cred in credentials" :key="cred.id" :value="cred.id">
+                                {{ cred.name }} ({{ cred.provider === 'vercel' ? 'Vercel' : 'Supabase' }}){{ cred.is_default ? ' ★ default' : '' }}
+                            </option>
+                        </select>
+                        <small v-if="credentials.length === 0" class="form-text text-danger">
+                            No storage credentials yet. Add one in Storage Settings before uploading.
+                        </small>
+                        <small v-else class="form-text text-muted">
+                            Images upload to the selected credential's storage.
+                        </small>
+                    </div>
+                    <div class="form-group">
                         <label for="files">Select Multiple Images</label>
                         <div class="file-input-wrapper">
                             <input type="file" id="files" @change="handleFilesChange" class="file-input-hidden" accept="image/*"
@@ -90,19 +105,12 @@
                         <button type="button" @click="closeModal" class="btn btn-secondary" :disabled="isUploading">
                             Cancel
                         </button>
-                        <button type="button" @click="startUploadSupabase" class="btn btn-primary"
-                            :disabled="selectedFiles.length === 0 || isUploading">
-                            <span v-if="isUploadingSupabase">
-                                Uploading to Supabase... ({{ uploadedCount }}/{{ selectedFiles.length }})
+                        <button type="button" @click="startUpload" class="btn btn-primary"
+                            :disabled="selectedFiles.length === 0 || isUploading || !selectedCredential">
+                            <span v-if="isUploading">
+                                Uploading... ({{ uploadedCount }}/{{ selectedFiles.length }})
                             </span>
-                            <span v-else>Upload to Supabase</span>
-                        </button>
-                        <button type="button" @click="startUploadVercel" class="btn btn-vercel"
-                            :disabled="selectedFiles.length === 0 || isUploading">
-                            <span v-if="isUploadingVercel">
-                                Uploading to Vercel... ({{ uploadedCount }}/{{ selectedFiles.length }})
-                            </span>
-                            <span v-else>Upload to Vercel</span>
+                            <span v-else>Upload</span>
                         </button>
                     </div>
                 </form>
@@ -142,12 +150,21 @@
 import { ref, computed, onMounted } from 'vue';
 import { useImageStore } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
+import { useStorageCredentialsStore } from '../../stores/storageCredentials';
 
 const emit = defineEmits(['close', 'upload-complete', 'refresh']);
 const imageStore = useImageStore();
 const categoryStore = useCategoryStore();
+const credentialsStore = useStorageCredentialsStore();
 const categories = computed(() => categoryStore.categories);
 const defaultCategoryIds = ref([]);
+
+// Storage credential selection (provider is derived from the chosen credential)
+const credentials = computed(() => credentialsStore.credentials);
+const selectedCredentialId = ref(null);
+const selectedCredential = computed(
+    () => credentials.value.find(c => c.id === selectedCredentialId.value) || null
+);
 
 // File selection state
 const selectedFiles = ref([]);
@@ -155,8 +172,7 @@ const filePreviewUrls = ref([]);
 const fileTitles = ref([]);
 
 // Upload state
-const isUploadingSupabase = ref(false);
-const isUploadingVercel = ref(false);
+const isUploading = ref(false);
 const uploadError = ref('');
 const fileProgress = ref([]);
 const fileStatuses = ref([]);
@@ -165,14 +181,16 @@ const failedCount = ref(0);
 const totalFiles = ref(0);
 const isComplete = ref(false);
 
-const isUploading = computed(() => isUploadingSupabase.value || isUploadingVercel.value);
-
 const MAX_FILES = 10;
 
-onMounted(() => {
+onMounted(async () => {
     if (categoryStore.categories.length === 0) {
         categoryStore.fetchCategories();
     }
+    await credentialsStore.fetchCredentials();
+    // Default the selection to the user's default credential, else the first one
+    const def = credentials.value.find(c => c.is_default) || credentials.value[0];
+    selectedCredentialId.value = def ? def.id : null;
 });
 
 const overallProgress = computed(() => {
@@ -251,13 +269,18 @@ const formatFileSize = (bytes) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const startUploadSupabase = async () => {
+const startUpload = async () => {
     if (selectedFiles.value.length === 0) {
         uploadError.value = 'Please select files to upload.';
         return;
     }
+    if (!selectedCredential.value) {
+        uploadError.value = 'Please select a storage credential.';
+        return;
+    }
 
-    isUploadingSupabase.value = true;
+    const credential = selectedCredential.value;
+    isUploading.value = true;
     uploadError.value = '';
     uploadedCount.value = 0;
     failedCount.value = 0;
@@ -271,8 +294,12 @@ const startUploadSupabase = async () => {
         fileStatuses.value[i] = 'Uploading...';
 
         try {
-            // Use the imageStore's uploadFile method (Supabase)
-            await uploadFileSupabase(file, title, i);
+            // Route by the chosen credential's provider, passing its id
+            if (credential.provider === 'vercel') {
+                await uploadFileVercel(file, title, i, credential.id);
+            } else {
+                await uploadFileSupabase(file, title, i, credential.id);
+            }
 
             fileProgress.value[i] = 100;
             fileStatuses.value[i] = 'Complete';
@@ -285,51 +312,12 @@ const startUploadSupabase = async () => {
         }
     }
 
-    isUploadingSupabase.value = false;
+    isUploading.value = false;
     isComplete.value = true;
     emit('upload-complete');
 };
 
-const startUploadVercel = async () => {
-    if (selectedFiles.value.length === 0) {
-        uploadError.value = 'Please select files to upload.';
-        return;
-    }
-
-    isUploadingVercel.value = true;
-    uploadError.value = '';
-    uploadedCount.value = 0;
-    failedCount.value = 0;
-    totalFiles.value = selectedFiles.value.length;
-
-    // Process files sequentially to avoid overwhelming the server
-    for (let i = 0; i < selectedFiles.value.length; i++) {
-        const file = selectedFiles.value[i];
-        const title = fileTitles.value[i] || file.name;
-
-        fileStatuses.value[i] = 'Uploading...';
-
-        try {
-            // Use the imageStore's uploadFileToVercel method
-            await uploadFileVercel(file, title, i);
-
-            fileProgress.value[i] = 100;
-            fileStatuses.value[i] = 'Complete';
-            uploadedCount.value++;
-        } catch (error) {
-            console.error(`Error uploading file ${i}:`, error);
-            fileProgress.value[i] = 0;
-            fileStatuses.value[i] = 'Failed';
-            failedCount.value++;
-        }
-    }
-
-    isUploadingVercel.value = false;
-    isComplete.value = true;
-    emit('upload-complete');
-};
-
-const uploadFileSupabase = async (file, title, index) => {
+const uploadFileSupabase = async (file, title, index, credentialId) => {
     return new Promise(async (resolve, reject) => {
         try {
             fileStatuses.value[index] = 'Uploading to Supabase...';
@@ -339,6 +327,9 @@ const uploadFileSupabase = async (file, title, index) => {
             formData.append('file', file);
             formData.append('title', title);
             formData.append('description', '');
+            if (credentialId) {
+                formData.append('credential_id', credentialId);
+            }
 
             if (defaultCategoryIds.value && defaultCategoryIds.value.length > 0) {
                 defaultCategoryIds.value.forEach((id, idx) => {
@@ -369,7 +360,7 @@ const uploadFileSupabase = async (file, title, index) => {
     });
 };
 
-const uploadFileVercel = async (file, title, index) => {
+const uploadFileVercel = async (file, title, index, credentialId) => {
     return new Promise(async (resolve, reject) => {
         try {
             // Step 1: Get client token
@@ -382,7 +373,8 @@ const uploadFileVercel = async (file, title, index) => {
                 size: file.size,
                 title: title,
                 description: '',
-                category_ids: defaultCategoryIds.value
+                category_ids: defaultCategoryIds.value,
+                credential_id: credentialId ?? null
             });
 
             const { clientToken, pathname, metadata } = tokenResponse.data;
