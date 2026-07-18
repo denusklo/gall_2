@@ -121,21 +121,4 @@ class CredentialNameService
         return self::NOUNS[array_rand(self::NOUNS)];
     }
 
-    /**
-     * Generate a random name with a numeric suffix if needed.
-     * Useful when most simple names are taken.
-     *
-     * @param int $suffix Numeric suffix to append
-     * @return string
-     */
-    public function generateWithSuffix(int $suffix = null): string
-    {
-        $name = $this->generateRandomName();
-
-        if ($suffix !== null) {
-            return $name . '-' . $suffix;
-        }
-
-        return $name;
-    }
 }

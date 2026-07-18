@@ -91,16 +91,6 @@
                                 }
                             @endphp
 
-                            <!-- Link visible to all authenticated users -->
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ route('requests.my') }}">{{ __('My Requests') }}</a>
-                            </li>
-
-                            <!-- All Requests - visible to all authenticated users -->
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ route('requests.all') }}">{{ __('All Requests') }}</a>
-                            </li>
-
                             <!-- Images Link - Individual images -->
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ route('images.index') }}">{{ __('Images') }}</a>

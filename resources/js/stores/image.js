@@ -104,7 +104,6 @@ export const useImageStore = defineStore('image', {
 
       try {
         // Step 1: Get client upload token from our backend
-        console.log('Step 1: Requesting client token from backend...');
         const tokenResponse = await axios.post('/apiv/_1/vercel/generate-client-token', {
           filename: file.name,
           content_type: file.type,
@@ -116,12 +115,10 @@ export const useImageStore = defineStore('image', {
         });
 
         const { clientToken, pathname, metadata } = tokenResponse.data;
-        console.log('Client token received. Pathname:', pathname);
 
         // Step 2: Upload directly to Vercel Blob Storage
         // CORRECT endpoint: https://vercel.com/api/blob (not blob.vercel-storage.com!)
         const uploadUrl = `https://vercel.com/api/blob/${pathname}`;
-        console.log('Step 2: Uploading to Vercel Blob:', uploadUrl);
 
         // Create a clean axios instance without any default headers for Vercel upload
         const vercelAxios = axios.create();
@@ -139,14 +136,11 @@ export const useImageStore = defineStore('image', {
               (progressEvent.loaded * 100) / progressEvent.total
             );
             this.uploadProgress = progress;
-            console.log(`Upload progress: ${progress}%`);
           }
         });
 
-        console.log('Upload successful! Vercel response:', uploadResponse.data);
 
         // Step 3: Notify our backend to save in the database
-        console.log('Step 3: Saving to database...');
         const callbackResponse = await axios.post('/apiv/_1/vercel/upload-callback', {
           blob: {
             url: uploadResponse.data.url,
@@ -158,7 +152,6 @@ export const useImageStore = defineStore('image', {
           metadata: metadata
         });
 
-        console.log('Image saved successfully!', callbackResponse.data.image);
 
         // Add the new image to the list
         this.images.unshift(callbackResponse.data.image);
@@ -188,9 +181,7 @@ export const useImageStore = defineStore('image', {
     },
 
     async deleteImage(id) {
-      console.log('[imageStore] deleteImage called with id:', id);
       const image = this.images.find(img => img.id === id);
-      console.log('[imageStore] Found image:', image);
 
       if (!image) {
         console.error('[imageStore] Image not found in local state');
@@ -200,18 +191,14 @@ export const useImageStore = defineStore('image', {
       try {
         // If it's a Vercel upload, delete from Vercel first
         if (image.storage_provider === 'vercel') {
-          console.log('[imageStore] Deleting from Vercel, URL:', image.storage_url);
           await axios.post('/apiv/_1/vercel/delete-blob', {
             url: image.storage_url,
             credential_id: image.storage_credential_id ?? null
           });
-          console.log('[imageStore] Vercel blob deleted successfully');
         }
 
         // Then delete from database
-        console.log('[imageStore] Deleting image from API, endpoint:', `/apiv/_1/images/${id}`);
         await axios.delete(`/apiv/_1/images/${id}`);
-        console.log('[imageStore] API delete successful');
 
         // Only remove from local state if BOTH deletions succeeded
         this.images = this.images.filter(img => img.id !== id);

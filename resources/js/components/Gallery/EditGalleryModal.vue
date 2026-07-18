@@ -77,7 +77,6 @@
 import { ref, onMounted } from 'vue';
 import { useGalleryStore } from '../../stores/gallery';
 
-console.log('[EditGalleryModal] Component script loading...');
 
 const props = defineProps({
   gallery: {
@@ -100,22 +99,17 @@ const loading = ref(false);
 const error = ref(null);
 const availableImages = ref([]);
 
-console.log('[EditGalleryModal] Component initialized with gallery:', props.gallery);
 
 onMounted(async () => {
-  console.log('[EditGalleryModal] Component mounted');
   // Get images from the current gallery
   if (props.gallery.images) {
     availableImages.value = props.gallery.images;
-    console.log('[EditGalleryModal] Available images:', availableImages.value.length);
   }
 });
 
 const handleSubmit = async () => {
-  console.log('[EditGalleryModal] handleSubmit called');
   if (!formData.value.title.trim()) {
     error.value = 'Title is required';
-    console.log('[EditGalleryModal] Validation failed: title is required');
     return;
   }
 
@@ -123,14 +117,12 @@ const handleSubmit = async () => {
   error.value = null;
 
   try {
-    console.log('[EditGalleryModal] Updating gallery with data:', formData.value);
     await galleryStore.updateGallery(props.gallery.id, {
       title: formData.value.title.trim(),
       description: formData.value.description.trim(),
       cover_image_id: formData.value.cover_image_id
     });
 
-    console.log('[EditGalleryModal] Gallery updated successfully');
     emit('gallery-updated');
   } catch (err) {
     error.value = err.response?.data?.message || 'Failed to update gallery';
@@ -141,7 +133,6 @@ const handleSubmit = async () => {
 };
 
 const closeModal = () => {
-  console.log('[EditGalleryModal] closeModal called');
   emit('close');
 };
 </script>

@@ -10,7 +10,6 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\GalleryStorageController;
 use App\Http\Controllers\Api\VercelBlobController;
 use App\Http\Controllers\Api\FcmController;
-use App\Http\Controllers\Api\UserSettingsController;
 use App\Http\Controllers\Api\StorageCredentialController;
 
 /*
@@ -101,18 +100,6 @@ Route::prefix('_1')->group(function () {
             Route::put('/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
             Route::put('/read-all', [\App\Http\Controllers\Api\NotificationController::class, 'markAllAsRead']);
             Route::delete('/{id}', [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
-        });
-
-        // Storage Settings routes
-        Route::prefix('storage-settings')->group(function() {
-            Route::get('/', [UserSettingsController::class, 'index']);
-            Route::post('/', [UserSettingsController::class, 'store']);
-            Route::put('/', [UserSettingsController::class, 'update']);
-            Route::delete('/{provider}', [UserSettingsController::class, 'deleteProvider']);
-
-            // Testing endpoints
-            Route::post('/test/supabase', [UserSettingsController::class, 'testSupabase']);
-            Route::post('/test/vercel', [UserSettingsController::class, 'testVercel']);
         });
 
         // Storage Credentials routes (multi-credential support)

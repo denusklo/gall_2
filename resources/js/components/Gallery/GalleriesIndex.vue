@@ -144,7 +144,6 @@ import EditGalleryModal from './EditGalleryModal.vue';
 import ConfirmDialog from './ConfirmDialog.vue';
 import axios from 'axios';
 
-console.log('[GalleriesIndex] Component script loading...');
 
 const galleryStore = useGalleryStore();
 const showCreateModal = ref(false);
@@ -157,7 +156,6 @@ let searchTimeout = null;
 
 // Watch for showCreateModal changes
 watch(showCreateModal, (newValue) => {
-  console.log('[GalleriesIndex] showCreateModal changed to:', newValue);
 });
 
 const hasGalleries = computed(() => galleryStore.galleries.length > 0);
@@ -221,7 +219,6 @@ const viewGallery = (id) => {
 };
 
 const editGallery = async (gallery) => {
-    console.log('[GalleriesIndex] editGallery called for:', gallery.id);
     // Fetch full gallery details including images for cover image selection
     try {
         const fullGallery = await galleryStore.fetchGallery(gallery.id);
@@ -233,7 +230,6 @@ const editGallery = async (gallery) => {
 };
 
 const onGalleryUpdated = () => {
-    console.log('[GalleriesIndex] Gallery updated! Closing modal and refreshing...');
     galleryToEdit.value = null;
     refreshGalleries();
 };
@@ -296,10 +292,7 @@ const refreshGalleries = () => {
 };
 
 const onGalleryCreated = () => {
-    console.log('[GalleriesIndex] Gallery created! Closing modal and refreshing...');
     showCreateModal.value = false;
-    console.log('[GalleriesIndex] Current galleries count:', galleryStore.galleries.length);
-    console.log('[GalleriesIndex] Current galleries:', galleryStore.galleries);
     // No need to refresh since the store already added the new gallery
     // refreshGalleries();
 };

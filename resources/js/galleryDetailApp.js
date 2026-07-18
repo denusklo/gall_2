@@ -4,7 +4,6 @@ import { createPinia } from 'pinia';
 import GalleryView from './components/Gallery/GalleryView.vue';
 import axios from 'axios';
 
-console.log('[galleryDetailApp] Script loading...');
 
 // Set up Axios defaults
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
@@ -32,11 +31,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const galleryDetailElement = document.getElementById('gallery-detail-app');
 
     if (galleryDetailElement) {
-        console.log('[galleryDetailApp] Element found');
 
         // Get the gallery ID from data attribute
         const galleryId = galleryDetailElement.getAttribute('data-gallery-id');
-        console.log('[galleryDetailApp] Gallery ID:', galleryId);
 
         if (!galleryId) {
             console.error('[galleryDetailApp] No gallery ID found');
@@ -57,7 +54,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.initializeBootstrapDropdowns();
         }
 
-        console.log('[galleryDetailApp] App mounted');
 
         // Add global error handler for Axios
         axios.interceptors.response.use(

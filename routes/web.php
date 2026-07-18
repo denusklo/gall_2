@@ -129,30 +129,6 @@ Route::get('/fcm-sw-keep-alive', function() {
 
 Route::middleware( ['firebase.auth'] )->group(function() {
 
-    // Route::get('home', 'RequestController@index')->name('home');
-    Route::resource('my', 'RequestController')->names('request');
-
-    // Specific routes must come BEFORE resource route to avoid conflicts
-    // Request completion routes
-    Route::get('/requests/my', 'RequestsController@myRequests')
-        ->name('requests.my');
-
-    Route::get('/requests/all', 'RequestsController@allRequests')
-        ->name('requests.all');
-
-    Route::get('/requests/completed', 'RequestsController@showCompleted')
-        ->name('requests.completed');
-
-    Route::post('/requests/{user_id}/{request_id}/complete', 'RequestsController@complete')
-        ->name('requests.complete');
-
-    Route::resource('requests', 'RequestsController');
-
-    // Legacy pending route - redirect to all
-    Route::get('/requests/pending', function() {
-        return redirect()->route('requests.all');
-    });
-
     Route::get('users', [FirebaseUserController::class, 'index'])
         ->middleware('firebase.admin')
         ->name('users');

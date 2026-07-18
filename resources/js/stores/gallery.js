@@ -59,14 +59,12 @@ export const useGalleryStore = defineStore('gallery', {
     async createGallery(data) {
       this.loading = true;
       try {
-        console.log('[GalleryStore] Creating gallery with data:', data);
         const response = await axios.post('/apiv/_1/galleries', {
           title: data.title,
           description: data.description,
           cover_image_id: data.cover_image_id || null
         });
 
-        console.log('[GalleryStore] Gallery created, response:', response.data);
 
         let newGallery = {
           ...response.data,
@@ -75,7 +73,6 @@ export const useGalleryStore = defineStore('gallery', {
 
         // If image_ids were provided, add them to the gallery
         if (data.image_ids && data.image_ids.length > 0) {
-          console.log('[GalleryStore] Adding images to gallery:', data.image_ids);
 
           // Add images one by one (excluding cover image if already added by backend)
           for (const imageId of data.image_ids) {
@@ -86,7 +83,6 @@ export const useGalleryStore = defineStore('gallery', {
               if (err.response?.status !== 409) {
                 throw err;
               }
-              console.log('[GalleryStore] Image already in gallery (likely cover image):', imageId);
             }
           }
 
@@ -101,7 +97,6 @@ export const useGalleryStore = defineStore('gallery', {
         this.galleries.unshift(newGallery);
         this.pagination.totalItems += 1;
 
-        console.log('[GalleryStore] Gallery added to list. Total galleries:', this.galleries.length);
 
         this.error = null;
         return newGallery;
