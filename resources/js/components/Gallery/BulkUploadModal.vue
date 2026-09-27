@@ -138,6 +138,10 @@
                             <p>Successfully uploaded {{ uploadedCount }} of {{ totalFiles }} files.</p>
                             <p class="text-warning">{{ failedCount }} files failed to upload.</p>
                         </template>
+                        <p v-if="pendingCount > 0" class="text-muted small">
+                            {{ pendingCount }} of the unfinished files may already be in storage and will be added automatically.
+                            Refresh the gallery later before uploading them again.
+                        </p>
                         <button @click="closeModal" class="btn btn-primary mt-3">Close</button>
                     </div>
                 </div>
@@ -148,7 +152,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useImageStore } from '../../stores/image';
+import { useImageStore, storageOperationInfo } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
 import { useStorageCredentialsStore } from '../../stores/storageCredentials';
 
@@ -178,6 +182,7 @@ const fileProgress = ref([]);
 const fileStatuses = ref([]);
 const uploadedCount = ref(0);
 const failedCount = ref(0);
+const pendingCount = ref(0);
 const totalFiles = ref(0);
 const isComplete = ref(false);
 
@@ -284,6 +289,7 @@ const startUpload = async () => {
     uploadError.value = '';
     uploadedCount.value = 0;
     failedCount.value = 0;
+    pendingCount.value = 0;
     totalFiles.value = selectedFiles.value.length;
 
     // Process files sequentially to avoid overwhelming the server
@@ -307,7 +313,12 @@ const startUpload = async () => {
         } catch (error) {
             console.error(`Error uploading file ${i}:`, error);
             fileProgress.value[i] = 0;
-            fileStatuses.value[i] = 'Failed';
+            // Durable operation responses: show pending/review guidance instead of a bare failure.
+            const operation = storageOperationInfo(error, 'upload');
+            fileStatuses.value[i] = operation
+                ? (operation.pending ? 'Pending: will be added automatically, refresh later' : 'Needs review')
+                : 'Failed';
+            if (operation?.pending) pendingCount.value++;
             failedCount.value++;
         }
     }

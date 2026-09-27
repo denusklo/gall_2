@@ -1,11 +1,11 @@
 <template>
   <div class="card mb-3" :class="{ 'border-primary': credential.is_default }">
     <div class="card-header d-flex justify-content-between align-items-center" :class="{ 'bg-primary text-white': credential.is_default }">
-      <div class="d-flex align-items-center">
-        <h6 class="mb-0 me-2">{{ credential.name }}</h6>
+      <div class="credential-header-title">
+        <h6 class="mb-0">{{ credential.name }}</h6>
         <span v-if="credential.is_default" class="badge bg-light text-dark">Default</span>
-        <span v-if="credential.is_verified" class="badge bg-success ms-1">Verified</span>
-        <span v-else class="badge bg-warning ms-1">Not Verified</span>
+        <span v-if="credential.is_verified" class="badge bg-success">Verified</span>
+        <span v-else class="badge bg-warning">Not Verified</span>
       </div>
       <div class="dropdown">
         <button class="btn btn-sm" :class="credential.is_default ? 'btn-light' : 'btn-outline-secondary'" type="button" data-toggle="dropdown">
@@ -116,6 +116,10 @@ function formatDate(dateString) {
 </script>
 
 <style scoped>
+.card-header { gap: .5rem; }
+.card-header > .dropdown { flex-shrink: 0; }
+.credential-header-title { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+.credential-header-title h6 { min-width: 0; overflow-wrap: anywhere; }
 .code {
   font-size: 0.75rem;
 }

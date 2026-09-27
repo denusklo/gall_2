@@ -183,8 +183,10 @@ const confirmDelete = async () => {
             console.error('[GalleryIndex] confirmDelete: Error deleting image:', error);
             // Show error to user using iziToast
             if (window.iziToast) {
-                window.iziToast.error({
-                    title: 'Error',
+                // Pending durable deletes are not failures: the image stays until storage confirms.
+                const pending = error.operation?.pending === true;
+                window.iziToast[pending ? 'warning' : 'error']({
+                    title: pending ? 'Deletion pending' : 'Error',
                     message: error.message || 'Failed to delete image',
                     position: 'topRight'
                 });
