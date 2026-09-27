@@ -26,6 +26,7 @@
     ],
     "env": {
         "APP_NAME": "Gall-2",
+        "APP_DEBUG": "false",
         "APP_URL": "https://gall-2.vercel.app/",
         "FIREBASE_DATABASE_URL": "https://usforus-3e70b-default-rtdb.asia-southeast1.firebasedatabase.app/",
         "CACHE_PATH": "/tmp/cache",
@@ -37,7 +38,7 @@
         "APP_SERVICES_CACHE": "/tmp/services.php",
         "VIEW_COMPILED_PATH": "/tmp",
         "CACHE_DRIVER": "array",
-        "SESSION_DRIVER": "database",
+        "SESSION_DRIVER": "cookie",
         "LOG_CHANNEL": "stderr"
     },
     "buildCommand": "npm run build"
