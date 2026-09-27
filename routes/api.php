@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\GalleryStorageController;
 use App\Http\Controllers\Api\VercelBlobController;
 use App\Http\Controllers\Api\FcmController;
 use App\Http\Controllers\Api\StorageCredentialController;
+use App\Http\Controllers\Api\StorageMaintenanceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,6 +33,10 @@ Route::prefix('_1')->group(function () {
     Route::get('test', [ApiController::class, 'api'])->name('api.test');
 
     Route::post('/login', [AuthController::class, 'login']);
+
+    // Daily storage maintenance (Vercel Cron uses GET). Machine auth only: Bearer CRON_SECRET,
+    // fails closed when the secret is not configured. Not under auth:sanctum or sessions.
+    Route::get('internal/storage-maintenance', StorageMaintenanceController::class)->middleware('storage.cron');
     Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'user']);
 
     // Protected routes

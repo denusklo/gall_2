@@ -65,5 +65,6 @@ class Kernel extends HttpKernel
         'firebase.auth' => \App\Http\Middleware\FirebaseAuthMiddleware::class,
         'firebase.admin' => \App\Http\Middleware\FirebaseAdminMiddleware::class,
         'unified.auth' => \App\Http\Middleware\UnifiedAuthMiddleware::class,
+        'storage.cron' => \App\Http\Middleware\AuthenticateStorageCron::class,
     ];
 }

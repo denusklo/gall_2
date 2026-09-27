@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\StorageCredential;
 use App\Models\UserSettings;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\ValidationException;
 
 class StorageCredentialService
 {
@@ -22,13 +23,14 @@ class StorageCredentialService
      * @param int|null $credentialId Specific credential ID to use (optional)
      * @return array{url: string, key: string, service_key: string, bucket: string, credential_id: int|null}
      */
-    public function getSupabaseCredentials(User $user, ?int $credentialId = null): array
+    public function getSupabaseCredentials(User $user, ?int $credentialId = null, bool $lockForUpdate = false): array
     {
         // If specific credential ID is provided, use that
-        if ($credentialId) {
+        if ($credentialId !== null) {
             $credential = StorageCredential::where('user_id', $user->id)
                 ->where('id', $credentialId)
                 ->where('provider', 'supabase')
+                ->when($lockForUpdate, fn ($query) => $query->lockForUpdate())
                 ->first();
 
             if ($credential && $credential->supabase_url && $credential->supabase_key) {
@@ -41,7 +43,7 @@ class StorageCredentialService
                 ];
             }
 
-            throw new \Exception('Credential not found or incomplete');
+            throw ValidationException::withMessages(['credential_id' => 'Supabase credential not found or incomplete.']);
         }
 
         // Try to get default Supabase credential
@@ -95,13 +97,14 @@ class StorageCredentialService
      * @param int|null $credentialId Specific credential ID to use (optional)
      * @return array{token: string, store_url: string, api_url: string, credential_id: int|null}
      */
-    public function getVercelCredentials(User $user, ?int $credentialId = null): array
+    public function getVercelCredentials(User $user, ?int $credentialId = null, bool $lockForUpdate = false): array
     {
         // If specific credential ID is provided, use that
-        if ($credentialId) {
+        if ($credentialId !== null) {
             $credential = StorageCredential::where('user_id', $user->id)
                 ->where('id', $credentialId)
                 ->where('provider', 'vercel')
+                ->when($lockForUpdate, fn ($query) => $query->lockForUpdate())
                 ->first();
 
             if ($credential && $credential->vercel_blob_token) {
@@ -113,7 +116,7 @@ class StorageCredentialService
                 ];
             }
 
-            throw new \Exception('Credential not found or incomplete');
+            throw ValidationException::withMessages(['credential_id' => 'Vercel credential not found or incomplete.']);
         }
 
         // Try to get default Vercel credential

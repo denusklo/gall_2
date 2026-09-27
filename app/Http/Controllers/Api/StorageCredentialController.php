@@ -4,6 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\StorageCredential;
+use App\Models\StorageOperation;
+use App\Models\Image;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use App\Services\CredentialNameService;
 use App\Services\UserSettingsService;
 use Illuminate\Http\Request;
@@ -238,7 +242,15 @@ class StorageCredentialController extends Controller
             }
         }
 
-        $credential->save();
+        $identityChanged = $credential->isDirty(['supabase_url', 'supabase_bucket', 'vercel_blob_token']);
+        DB::transaction(function () use ($credential, $identityChanged) {
+            // Same credential lock as upload reservation, so no new intent can slip in.
+            StorageCredential::whereKey($credential->id)->lockForUpdate()->firstOrFail();
+            abort_if($identityChanged && StorageOperation::where('storage_credential_id', $credential->id)
+                ->whereNotIn('state', StorageOperation::TERMINAL)->exists(), 409,
+                'This account has pending storage operations. Wait for them to finish before changing its URL, bucket or token.');
+            $credential->save();
+        });
 
         return response()->json([
             'id' => $credential->id,
@@ -258,12 +270,20 @@ class StorageCredentialController extends Controller
      */
     public function destroy(int $id): JsonResponse
     {
-        $credential = Auth::user()
-            ->storageCredentials()
-            ->where('id', $id)
-            ->firstOrFail();
-
-        $credential->delete();
+        DB::transaction(function () use ($id) {
+            // Use the same owner lock as receipt completion; the credential lock
+            // also serializes deletion with inserts that reference its foreign key.
+            User::whereKey(Auth::id())->lockForUpdate()->firstOrFail();
+            $credential = StorageCredential::where('user_id', Auth::id())
+                ->whereKey($id)->lockForUpdate()->firstOrFail();
+            $referenced = Image::withTrashed()->where('storage_credential_id', $credential->id)
+                ->lockForUpdate()->first(['id']);
+            abort_if($referenced !== null, 409,
+                'This credential is used by images, including deleted images. Keep it until those images have been explicitly migrated or permanently removed.');
+            abort_if(StorageOperation::where('storage_credential_id', $credential->id)->exists(), 409,
+                'This credential is recorded in the storage operation journal and must be kept.');
+            $credential->delete();
+        });
 
         return response()->json([
             'message' => 'Storage credential deleted successfully',
