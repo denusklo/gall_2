@@ -3,6 +3,8 @@
  * This file handles FCM notification permission and token registration
  */
 
+import { refreshSharedApiToken } from './apiTokenRefresh';
+
 // Firebase configuration - these should be loaded from environment
 const firebaseConfig = {
     apiKey: window.FIREBASE_CONFIG?.apiKey || '',
@@ -20,6 +22,9 @@ const FcmService = {
     messaging: null,
     token: null,
     swRegistration: null, // Store service worker registration
+    verifiedUid: null,
+    verifiedAt: 0,
+    VERIFY_TTL_MS: 60 * 1000,
 
     /**
      * Initialize FCM
@@ -141,29 +146,7 @@ const FcmService = {
      * Refresh API token from server
      */
     async refreshApiToken() {
-        try {
-            const response = await fetch('/apiv/_1/token', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                credentials: 'same-origin' // Include cookies for session auth
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const newToken = data.token;
-                localStorage.setItem(this.getApiKey(), newToken);
-                return newToken;
-            } else {
-                console.error('[FCM] Failed to refresh token. Status:', response.status);
-                return null;
-            }
-        } catch (error) {
-            console.error('[FCM] Error refreshing token:', error);
-            return null;
-        }
+        return refreshSharedApiToken(this.getApiKey());
     },
 
     /**
@@ -351,98 +334,58 @@ const FcmService = {
      * when sharing the same browser/device
      */
     async verifyNotificationRecipient(payload) {
-        try {
-            const apiToken = localStorage.getItem(this.getApiKey());
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        // Recently verified: avoid a test-auth round trip per foreground message.
+        if (this.verifiedUid && Date.now() - this.verifiedAt < this.VERIFY_TTL_MS) {
+            return true;
+        }
 
-            // Get current user's Firebase UID
-            const response = await fetch('/apiv/_1/test-auth', {
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const testAuth = (token) => fetch('/apiv/_1/test-auth', {
                 headers: {
-                    'Authorization': `Bearer ${apiToken}`,
+                    'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': csrfToken || '',
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             });
 
-            if (!response.ok) {
-                // Handle 401 - token invalid/expired, try to refresh and retry
-                if (response.status === 401) {
-                    console.warn('[FCM] Token invalid during verification, attempting refresh...');
-                    const newToken = await this.refreshApiToken();
+            let response = await testAuth(localStorage.getItem(this.getApiKey()));
 
-                    if (newToken) {
-                        // Retry verification with new token
-                        const retryResponse = await fetch('/apiv/_1/test-auth', {
-                            headers: {
-                                'Authorization': `Bearer ${newToken}`,
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken || '',
-                                'X-Requested-With': 'XMLHttpRequest'
-                            }
-                        });
-
-                        if (retryResponse.ok) {
-                            const data = await retryResponse.json();
-                            const currentFirebaseUid = data.firebase_uid;
-
-                            if (currentFirebaseUid) {
-                                // Check if we have the last known Firebase UID stored
-                                const lastKnownUid = localStorage.getItem('fcm_last_firebase_uid');
-
-                                // If the Firebase UID has changed, re-register the FCM token
-                                if (lastKnownUid !== currentFirebaseUid) {
-                                    // Update the stored UID
-                                    localStorage.setItem('fcm_last_firebase_uid', currentFirebaseUid);
-
-                                    // Re-register the FCM token with the new user
-                                    if (this.token) {
-                                        await this.registerTokenWithServer(this.token);
-                                    }
-                                }
-                            }
-
-                            return true;
-                        } else {
-                            console.error('[FCM] Verification retry failed after token refresh');
-                            return false;
-                        }
-                    } else {
-                        console.error('[FCM] Failed to refresh token during verification');
-                        return false;
-                    }
+            if (response.status === 401) {
+                const newToken = await this.refreshApiToken();
+                if (!newToken) {
+                    console.error('[FCM] Failed to refresh token during verification');
+                    return false;
                 }
+                response = await testAuth(newToken);
+            }
 
+            if (!response.ok) {
                 return false;
             }
 
-            const data = await response.json();
-            const currentFirebaseUid = data.firebase_uid;
-
+            const currentFirebaseUid = (await response.json()).firebase_uid;
             if (!currentFirebaseUid) {
                 return false;
             }
 
-            // Check if we have the last known Firebase UID stored
+            // If the Firebase UID has changed, re-register the FCM token with the new user
             const lastKnownUid = localStorage.getItem('fcm_last_firebase_uid');
-
-            // If the Firebase UID has changed, re-register the FCM token
             if (lastKnownUid !== currentFirebaseUid) {
-                // Update the stored UID
                 localStorage.setItem('fcm_last_firebase_uid', currentFirebaseUid);
-
-                // Re-register the FCM token with the new user
                 if (this.token) {
                     await this.registerTokenWithServer(this.token);
                 }
             }
 
-            // The notification is valid since we're authenticated
+            this.verifiedUid = currentFirebaseUid;
+            this.verifiedAt = Date.now();
             return true;
-
         } catch (error) {
+            // Fail closed: if the recipient can't be verified, don't show the notification.
             console.error('[FCM] Error verifying notification recipient:', error);
-            return true; // Show notification if verification fails
+            return false;
         }
     },
 
@@ -504,29 +447,7 @@ const FcmService = {
      * Fetch API token from server if not in localStorage
      */
     async fetchApiToken() {
-        try {
-            const response = await fetch('/apiv/_1/token', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                credentials: 'same-origin'
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const token = data.token;
-                localStorage.setItem(this.getApiKey(), token);
-                return token;
-            } else {
-                console.error('[FCM] Failed to fetch API token. Status:', response.status);
-                return null;
-            }
-        } catch (error) {
-            console.error('[FCM] Error fetching API token:', error);
-            return null;
-        }
+        return refreshSharedApiToken(this.getApiKey());
     }
 };
 

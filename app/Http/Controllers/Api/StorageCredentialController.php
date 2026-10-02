@@ -137,12 +137,14 @@ class StorageCredentialController extends Controller
             return response()->json(['errors' => $errors], 422);
         }
 
-        $credential->save();
+        DB::transaction(function () use ($credential, $user) {
+            $credential->save();
 
-        // Handle default credential
-        if ($credential->is_default) {
-            $this->ensureSingleDefault($user->id, $credential->id);
-        }
+            // Handle default credential
+            if ($credential->is_default) {
+                $this->ensureSingleDefault($user->id, $credential->id);
+            }
+        });
 
         return response()->json([
             'id' => $credential->id,
@@ -252,9 +254,6 @@ class StorageCredentialController extends Controller
         // Handle default credential
         if ($request->has('is_default')) {
             $credential->is_default = $request->boolean('is_default');
-            if ($credential->is_default) {
-                $this->ensureSingleDefault(Auth::id(), $credential->id);
-            }
         }
 
         $identityChanged = $credential->isDirty(['supabase_url', 'supabase_bucket', 'vercel_blob_token']);
@@ -265,6 +264,9 @@ class StorageCredentialController extends Controller
                 ->whereNotIn('state', StorageOperation::TERMINAL)->exists(), 409,
                 'This account has pending storage operations. Wait for them to finish before changing its URL, bucket or token.');
             $credential->save();
+            if ($credential->is_default) {
+                $this->ensureSingleDefault(Auth::id(), $credential->id);
+            }
         });
 
         return response()->json([

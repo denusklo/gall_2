@@ -2,6 +2,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import axios from 'axios';
+import { registerAuthInterceptor } from './axiosInterceptors';
 import StorageSettings from './components/StorageSettings.vue';
 
 // Set up Axios defaults
@@ -33,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Try to get token before initializing app
         await getApiToken();
 
+        registerAuthInterceptor(['gallery_2.localhost.dev_token']);
         const app = createApp(StorageSettings);
 
         // Use Pinia
@@ -41,27 +43,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Mount app
         app.mount('#storage-settings-app');
 
-        // Add global error handler for Axios
-        axios.interceptors.response.use(
-            response => response,
-            error => {
-                // Handle 401 Unauthorized responses
-                if (error.response && error.response.status === 401) {
-                    // Clear token and redirect to login
-                    localStorage.removeItem('gallery_2.localhost.dev_token');
-                    window.location.href = '/login';
-                    return Promise.reject(error);
-                }
-
-                // Handle 419 CSRF token expired
-                if (error.response && error.response.status === 419) {
-                    alert('Your session has expired. Please refresh the page.');
-                    return Promise.reject(error);
-                }
-
-                return Promise.reject(error);
-            }
-        );
     }
 });
 

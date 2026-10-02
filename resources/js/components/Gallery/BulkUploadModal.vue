@@ -151,7 +151,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import axios from 'axios';
 import { useImageStore, storageOperationInfo } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
 import { useStorageCredentialsStore } from '../../stores/storageCredentials';
@@ -187,6 +188,18 @@ const totalFiles = ref(0);
 const isComplete = ref(false);
 
 const MAX_FILES = 10;
+
+// Aborts in-flight requests when the modal is closed/unmounted.
+let uploadAbort = null;
+
+const revokePreviewUrls = () => {
+    filePreviewUrls.value.forEach(url => URL.revokeObjectURL(url));
+};
+
+onBeforeUnmount(() => {
+    uploadAbort?.abort();
+    revokePreviewUrls();
+});
 
 onMounted(async () => {
     if (categoryStore.categories.length === 0) {
@@ -227,17 +240,14 @@ const handleFilesChange = (event) => {
     uploadError.value = '';
 
     // Generate previews and auto-titles
+    revokePreviewUrls();
     selectedFiles.value = newFiles;
     filePreviewUrls.value = [];
     fileTitles.value = [];
 
     newFiles.forEach(file => {
-        // Generate preview
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            filePreviewUrls.value.push(e.target.result);
-        };
-        reader.readAsDataURL(file);
+        // Generate preview (revoked on selection change, removal and unmount)
+        filePreviewUrls.value.push(URL.createObjectURL(file));
 
         // Generate title from filename
         const title = file.name
@@ -255,11 +265,13 @@ const handleFilesChange = (event) => {
 
 const removeFile = (index) => {
     selectedFiles.value.splice(index, 1);
-    filePreviewUrls.value.splice(index, 1);
+    const [removedUrl] = filePreviewUrls.value.splice(index, 1);
+    if (removedUrl) URL.revokeObjectURL(removedUrl);
     fileTitles.value.splice(index, 1);
 };
 
 const clearFiles = () => {
+    revokePreviewUrls();
     selectedFiles.value = [];
     filePreviewUrls.value = [];
     fileTitles.value = [];
@@ -287,6 +299,8 @@ const startUpload = async () => {
     const credential = selectedCredential.value;
     // "Default storage" sends no credential id; the server uses its configured shared store.
     const credentialId = credential.isEnvironmentDefault ? null : credential.id;
+    uploadAbort = new AbortController();
+    const signal = uploadAbort.signal;
     isUploading.value = true;
     uploadError.value = '';
     uploadedCount.value = 0;
@@ -296,6 +310,7 @@ const startUpload = async () => {
 
     // Process files sequentially to avoid overwhelming the server
     for (let i = 0; i < selectedFiles.value.length; i++) {
+        if (signal.aborted) return;
         const file = selectedFiles.value[i];
         const title = fileTitles.value[i] || file.name;
 
@@ -304,15 +319,17 @@ const startUpload = async () => {
         try {
             // Route by the chosen credential's provider, passing its id
             if (credential.provider === 'vercel') {
-                await uploadFileVercel(file, title, i, credentialId);
+                await uploadFileVercel(file, title, i, credentialId, signal);
             } else {
-                await uploadFileSupabase(file, title, i, credentialId);
+                await uploadFileSupabase(file, title, i, credentialId, signal);
             }
 
             fileProgress.value[i] = 100;
             fileStatuses.value[i] = 'Complete';
             uploadedCount.value++;
         } catch (error) {
+            // Modal closed/unmounted: stop without touching state.
+            if (axios.isCancel(error) || signal.aborted) return;
             console.error(`Error uploading file ${i}:`, error);
             fileProgress.value[i] = 0;
             // Durable operation responses: show pending/review guidance instead of a bare failure.
@@ -325,119 +342,120 @@ const startUpload = async () => {
         }
     }
 
+    if (signal.aborted) return;
     isUploading.value = false;
     isComplete.value = true;
     emit('upload-complete');
 };
 
-const uploadFileSupabase = async (file, title, index, credentialId) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            fileStatuses.value[index] = 'Uploading to Supabase...';
+const uploadFileSupabase = async (file, title, index, credentialId, signal) => {
+    try {
+        fileStatuses.value[index] = 'Uploading to Supabase...';
 
-            // Create FormData similar to single upload
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('title', title);
-            formData.append('description', '');
-            if (credentialId) {
-                formData.append('credential_id', credentialId);
-            }
-
-            if (defaultCategoryIds.value && defaultCategoryIds.value.length > 0) {
-                defaultCategoryIds.value.forEach((id, idx) => {
-                    formData.append(`category_ids[${idx}]`, id);
-                });
-            }
-
-            // Upload using axios to track progress
-            const response = await axios.post('/apiv/_1/images/upload', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                },
-                onUploadProgress: (progressEvent) => {
-                    const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-                    fileProgress.value[index] = progress;
-                    fileStatuses.value[index] = `Uploading... ${progress}%`;
-                }
-            });
-
-            fileProgress.value[index] = 100;
-            fileStatuses.value[index] = 'Complete';
-            resolve(response.data);
-        } catch (error) {
-            fileProgress.value[index] = 0;
-            fileStatuses.value[index] = 'Failed';
-            reject(error);
+        // Create FormData similar to single upload
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', title);
+        formData.append('description', '');
+        if (credentialId) {
+            formData.append('credential_id', credentialId);
         }
-    });
+
+        if (defaultCategoryIds.value && defaultCategoryIds.value.length > 0) {
+            defaultCategoryIds.value.forEach((id, idx) => {
+                formData.append(`category_ids[${idx}]`, id);
+            });
+        }
+
+        // Upload using axios to track progress
+        const response = await axios.post('/apiv/_1/images/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            },
+            signal,
+            onUploadProgress: (progressEvent) => {
+                if (!progressEvent.total) return;
+                const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                fileProgress.value[index] = progress;
+                fileStatuses.value[index] = `Uploading... ${progress}%`;
+            }
+        });
+
+        fileProgress.value[index] = 100;
+        fileStatuses.value[index] = 'Complete';
+        return response.data;
+    } catch (error) {
+        fileProgress.value[index] = 0;
+        fileStatuses.value[index] = 'Failed';
+        throw error;
+    }
 };
 
-const uploadFileVercel = async (file, title, index, credentialId) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            // Step 1: Get client token
-            fileStatuses.value[index] = 'Requesting token...';
-            fileProgress.value[index] = 10;
+const uploadFileVercel = async (file, title, index, credentialId, signal) => {
+    try {
+        // Step 1: Get client token
+        fileStatuses.value[index] = 'Requesting token...';
+        fileProgress.value[index] = 10;
 
-            const tokenResponse = await axios.post('/apiv/_1/vercel/generate-client-token', {
-                filename: file.name,
-                content_type: file.type,
-                size: file.size,
-                title: title,
-                description: '',
-                category_ids: defaultCategoryIds.value,
-                credential_id: credentialId ?? null
-            });
+        const tokenResponse = await axios.post('/apiv/_1/vercel/generate-client-token', {
+            filename: file.name,
+            content_type: file.type,
+            size: file.size,
+            title: title,
+            description: '',
+            category_ids: defaultCategoryIds.value,
+            credential_id: credentialId ?? null
+        }, { signal });
 
-            const { clientToken, pathname, metadata } = tokenResponse.data;
+        const { clientToken, pathname, metadata } = tokenResponse.data;
 
-            // Step 2: Upload to Vercel Blob
-            const uploadUrl = `https://vercel.com/api/blob/${pathname}`;
-            fileStatuses.value[index] = 'Uploading to Vercel...';
-            fileProgress.value[index] = 20;
+        // Step 2: Upload to Vercel Blob
+        const uploadUrl = `https://vercel.com/api/blob/${pathname}`;
+        fileStatuses.value[index] = 'Uploading to Vercel...';
+        fileProgress.value[index] = 20;
 
-            // Create clean axios instance for Vercel
-            const vercelAxios = axios.create();
-            vercelAxios.defaults.headers.common = {};
+        // Create clean axios instance for Vercel
+        const vercelAxios = axios.create();
+        vercelAxios.defaults.headers.common = {};
 
-            const uploadResponse = await vercelAxios.put(uploadUrl, file, {
-                headers: {
-                    'Authorization': `Bearer ${clientToken}`,
-                    'Content-Type': file.type,
-                },
-                onUploadProgress: (progressEvent) => {
-                    // Map progress from 20% to 80%
-                    const uploadProgress = Math.round((progressEvent.loaded * 60) / progressEvent.total);
-                    fileProgress.value[index] = 20 + uploadProgress;
-                    fileStatuses.value[index] = `Uploading... ${fileProgress.value[index]}%`;
-                }
-            });
+        const uploadResponse = await vercelAxios.put(uploadUrl, file, {
+            headers: {
+                'Authorization': `Bearer ${clientToken}`,
+                'Content-Type': file.type,
+            },
+            signal,
+            onUploadProgress: (progressEvent) => {
+                if (!progressEvent.total) return;
+                // Map progress from 20% to 80%
+                const uploadProgress = Math.round((progressEvent.loaded * 60) / progressEvent.total);
+                fileProgress.value[index] = 20 + uploadProgress;
+                fileStatuses.value[index] = `Uploading... ${fileProgress.value[index]}%`;
+            }
+        });
 
-            // Step 3: Save to database
-            fileStatuses.value[index] = 'Saving...';
-            fileProgress.value[index] = 90;
+        // Step 3: Save to database (not abortable: the blob is already stored)
+        fileStatuses.value[index] = 'Saving...';
+        fileProgress.value[index] = 90;
 
-            const callbackResponse = await axios.post('/apiv/_1/vercel/upload-callback', {
-                blob: {
-                    url: uploadResponse.data.url,
-                    pathname: uploadResponse.data.pathname || pathname,
-                    size: uploadResponse.data.size || file.size,
-                    contentType: uploadResponse.data.contentType || file.type,
-                    downloadUrl: uploadResponse.data.downloadUrl
-                },
-                metadata: metadata
-            });
+        const callbackResponse = await axios.post('/apiv/_1/vercel/upload-callback', {
+            blob: {
+                url: uploadResponse.data.url,
+                pathname: uploadResponse.data.pathname || pathname,
+                size: uploadResponse.data.size || file.size,
+                contentType: uploadResponse.data.contentType || file.type,
+                downloadUrl: uploadResponse.data.downloadUrl
+            },
+            metadata: metadata
+        });
 
-            fileProgress.value[index] = 100;
-            fileStatuses.value[index] = 'Complete';
-            resolve(callbackResponse.data.image);
-        } catch (error) {
-            fileProgress.value[index] = 0;
-            fileStatuses.value[index] = 'Failed';
-            reject(error);
-        }
-    });
+        fileProgress.value[index] = 100;
+        fileStatuses.value[index] = 'Complete';
+        return callbackResponse.data.image;
+    } catch (error) {
+        fileProgress.value[index] = 0;
+        fileStatuses.value[index] = 'Failed';
+        throw error;
+    }
 };
 
 const closeModal = () => {
@@ -447,8 +465,10 @@ const closeModal = () => {
         }
     }
 
+    uploadAbort?.abort();
+
     // Emit refresh event if upload was complete
-    if (isComplete.value && (uploadedCount.value > 0 || failedCount.value > 0)) {
+    if (uploadedCount.value > 0 || (isComplete.value && failedCount.value > 0)) {
         emit('refresh');
     }
 

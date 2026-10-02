@@ -192,13 +192,12 @@ class UnifiedAuthController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to create Firebase user', [
-                'email' => $email,
-                'error' => $e->getMessage(),
+                'exception_class' => get_class($e),
             ]);
 
             return redirect()->route('register')
                 ->withInput()
-                ->with('error', 'Registration failed: ' . $e->getMessage());
+                ->with('error', 'Registration failed. Please try again.');
         }
 
         // Step 2: Create MySQL user
@@ -219,8 +218,7 @@ class UnifiedAuthController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to create MySQL user', [
-                'email' => $email,
-                'error' => $e->getMessage(),
+                'exception_class' => get_class($e),
             ]);
 
             // Rollback Firebase user creation
@@ -229,13 +227,13 @@ class UnifiedAuthController extends Controller
             } catch (\Exception $rollbackError) {
                 Log::error('Failed to rollback Firebase user', [
                     'firebase_uid' => $firebaseUser->uid,
-                    'error' => $rollbackError->getMessage(),
+                    'exception_class' => get_class($rollbackError),
                 ]);
             }
 
             return redirect()->route('register')
                 ->withInput()
-                ->with('error', 'Registration failed: ' . $e->getMessage());
+                ->with('error', 'Registration failed. Please try again.');
         }
 
         // Step 3: Log the user in

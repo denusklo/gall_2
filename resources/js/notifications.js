@@ -3,10 +3,11 @@
  * Standalone notification system for navbar
  */
 
+import { refreshSharedApiToken } from './apiTokenRefresh';
+
 const NotificationService = {
     notifications: [],
     unreadCount: 0,
-    tokenRefreshed: false,
 
     async init() {
         // Wait a bit for FCM to refresh token if needed
@@ -40,24 +41,7 @@ const NotificationService = {
     },
 
     async refreshToken() {
-        try {
-            const response = await fetch('/apiv/_1/token', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                credentials: 'same-origin'
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                localStorage.setItem('api_token', data.token);
-                this.tokenRefreshed = true;
-            }
-        } catch (error) {
-            console.error('[Notifications] Token refresh failed:', error);
-        }
+        return refreshSharedApiToken('api_token');
     },
 
     setupEventListeners() {
@@ -101,12 +85,13 @@ const NotificationService = {
 
         let response = await fetch(url, { ...options, headers });
 
-        // If 401, try refreshing token once
-        if (response.status === 401 && !this.tokenRefreshed) {
-            await this.refreshToken();
-            const newToken = localStorage.getItem('api_token');
-            headers['Authorization'] = `Bearer ${newToken}`;
-            response = await fetch(url, { ...options, headers });
+        // If 401, refresh the token (shared with FCM) and retry once
+        if (response.status === 401) {
+            const newToken = await this.refreshToken();
+            if (newToken) {
+                headers['Authorization'] = `Bearer ${newToken}`;
+                response = await fetch(url, { ...options, headers });
+            }
         }
 
         return response;
@@ -350,27 +335,26 @@ const NotificationService = {
     }
 };
 
-// Initialize when DOM is ready (with slight delay to let FCM refresh token first)
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', async () => {
-        if (localStorage.getItem('api_token')) {
-            // Wait 1.5 seconds for FCM to potentially refresh the token
-            setTimeout(() => {
-                NotificationService.init().catch(err => {
-                    console.error('[Notifications] Initialization failed:', err);
-                });
-            }, 1500);
-        }
-    });
-} else {
-    if (localStorage.getItem('api_token')) {
-        // Wait 1.5 seconds for FCM to potentially refresh the token
-        setTimeout(() => {
-            NotificationService.init().catch(err => {
-                console.error('[Notifications] Initialization failed:', err);
-            });
-        }, 1500);
+// Initialize once the DOM is ready. If no token is stored yet (first visit),
+// fetch one through the shared refresh so the dropdown works without a reload.
+async function startNotifications() {
+    let token = localStorage.getItem('api_token');
+    if (!token) {
+        token = await refreshSharedApiToken('api_token');
     }
+    if (!token) return;
+
+    try {
+        await NotificationService.init();
+    } catch (err) {
+        console.error('[Notifications] Initialization failed:', err);
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startNotifications);
+} else {
+    startNotifications();
 }
 
 // Make it globally available

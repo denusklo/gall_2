@@ -34,20 +34,23 @@ class ImageController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request) {
+        $request->validate(['per_page' => 'nullable|integer|min:1|max:100']);
+        $like = fn ($v) => addcslashes((string) $v, '\\%_');
         $query = Image::where('user_id', auth()->id());
 
         // Apply search filter
         if ($request->has('search') && !empty($request->search)) {
             $query->where(function ($q) use ($request) {
-                $q->where('title', 'like', '%' . $request->search . '%')
-                    ->orWhere('description', 'like', '%' . $request->search . '%')
-                    ->orWhere('filename', 'like', '%' . $request->search . '%');
+                $term = '%' . $like($request->search) . '%';
+                $q->where('title', 'like', $term)
+                    ->orWhere('description', 'like', $term)
+                    ->orWhere('filename', 'like', $term);
             });
         }
 
         // Apply file type filter
         if ($request->has('file_type') && !empty($request->file_type)) {
-            $query->where('mime_type', 'like', $request->file_type . '%');
+            $query->where('mime_type', 'like', $like($request->file_type) . '%');
         }
 
         // Apply category filter
@@ -219,12 +222,8 @@ class ImageController extends Controller {
 
             return response()->json($image);
         } catch (\Exception $e) {
-            Log::error('Error updating image: ' . $e->getMessage(), [
-                'exception' => $e,
-                'image_id' => $id,
-                'request' => $request->all(),
-            ]);
-            return response()->json(['error' => 'Failed to update image: ' . $e->getMessage()], 500);
+            Log::error('Error updating image', ['exception_class' => get_class($e), 'image_id' => $id]);
+            return response()->json(['error' => 'Failed to update image.'], 500);
         }
     }
 
@@ -330,10 +329,8 @@ class ImageController extends Controller {
                 'timeline' => $timeline,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching image stats: ' . $e->getMessage(), [
-                'exception' => $e,
-            ]);
-            return response()->json(['error' => 'Failed to fetch image stats: ' . $e->getMessage()], 500);
+            Log::error('Error fetching image stats', ['exception_class' => get_class($e)]);
+            return response()->json(['error' => 'Failed to fetch image stats.'], 500);
         }
     }
 

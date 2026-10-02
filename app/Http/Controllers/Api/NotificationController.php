@@ -22,6 +22,7 @@ class NotificationController extends Controller
         $userId = $user->id;
         $firebaseUid = $user->firebase_uid;
 
+        $request->validate(['per_page' => 'nullable|integer|min:1|max:100']);
         $perPage = $request->input('per_page', 15);
         $unreadOnly = $request->boolean('unread_only', false);
 

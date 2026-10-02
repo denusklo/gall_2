@@ -3,6 +3,7 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import GalleriesIndex from './components/Gallery/GalleriesIndex.vue';
 import axios from 'axios';
+import { registerAuthInterceptor } from './axiosInterceptors';
 
 // Set up Axios defaults
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
@@ -33,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Try to get token before initializing app
         await getApiToken();
 
+        registerAuthInterceptor(['api_token']);
         const app = createApp(GalleriesIndex);
         app.use(pinia);
         app.mount('#galleries-app');
@@ -42,27 +44,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.initializeBootstrapDropdowns();
         }
 
-        // Add global error handler for Axios
-        axios.interceptors.response.use(
-            response => response,
-            error => {
-                // Handle 401 Unauthorized responses
-                if (error.response && error.response.status === 401) {
-                    // Clear token and redirect to login
-                    localStorage.removeItem('api_token');
-                    window.location.href = '/login';
-                    return Promise.reject(error);
-                }
-
-                // Handle 419 CSRF token expired
-                if (error.response && error.response.status === 419) {
-                    alert('Your session has expired. Please refresh the page.');
-                    return Promise.reject(error);
-                }
-
-                return Promise.reject(error);
-            }
-        );
     }
 });
 

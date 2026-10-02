@@ -8,6 +8,7 @@ use App\Models\Image;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\Rule;
 
 class GalleryController extends Controller {
@@ -19,13 +20,15 @@ class GalleryController extends Controller {
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request) {
+        $request->validate(['per_page' => 'nullable|integer|min:1|max:100']);
         $query = Gallery::where('user_id', auth()->id());
 
         // Apply search filter
         if ($request->has('search') && !empty($request->search)) {
             $query->where(function ($q) use ($request) {
-                $q->where('title', 'like', '%' . $request->search . '%')
-                    ->orWhere('description', 'like', '%' . $request->search . '%');
+                $term = '%' . addcslashes($request->search, '\\%_') . '%';
+                $q->where('title', 'like', $term)
+                    ->orWhere('description', 'like', $term);
             });
         }
 
@@ -49,7 +52,7 @@ class GalleryController extends Controller {
 
         // Paginate the results
         $perPage = $request->get('per_page', 12);
-        $galleries = $query->with(['coverImage', 'user'])
+        $galleries = $query->with(['coverImage'])
             ->withCount('images')
             ->paginate($perPage);
 
@@ -95,11 +98,8 @@ class GalleryController extends Controller {
         } catch (\Exception $e) {
             DB::rollBack();
 
-            Log::error('Error storing gallery: ' . $e->getMessage(), [
-                'exception' => $e,
-                'request' => $request->all(),
-            ]);
-            return response()->json(['error' => 'Failed to store gallery: ' . $e->getMessage()], 500);
+            Log::error('Error storing gallery', ['exception_class' => get_class($e)]);
+            return response()->json(['error' => 'Failed to store gallery.'], 500);
         }
     }
 
@@ -145,12 +145,8 @@ class GalleryController extends Controller {
 
             return response()->json($gallery);
         } catch (\Exception $e) {
-            Log::error('Error updating gallery: ' . $e->getMessage(), [
-                'exception' => $e,
-                'gallery_id' => $id,
-                'request' => $request->all(),
-            ]);
-            return response()->json(['error' => 'Failed to update gallery: ' . $e->getMessage()], 500);
+            Log::error('Error updating gallery', ['exception_class' => get_class($e), 'gallery_id' => $id]);
+            return response()->json(['error' => 'Failed to update gallery.'], 500);
         }
     }
 
@@ -169,11 +165,8 @@ class GalleryController extends Controller {
 
             return response()->json(['message' => 'Gallery deleted successfully']);
         } catch (\Exception $e) {
-            Log::error('Error deleting gallery: ' . $e->getMessage(), [
-                'exception' => $e,
-                'gallery_id' => $id,
-            ]);
-            return response()->json(['error' => 'Failed to delete gallery: ' . $e->getMessage()], 500);
+            Log::error('Error deleting gallery', ['exception_class' => get_class($e), 'gallery_id' => $id]);
+            return response()->json(['error' => 'Failed to delete gallery.'], 500);
         }
     }
 
@@ -190,31 +183,31 @@ class GalleryController extends Controller {
         $image = Image::where('user_id', auth()->id())->findOrFail($imageId);
 
         try {
-            // Get the current max order for this gallery
-            $maxOrder = $gallery->images()->max('order') ?? -1;
-
-            // Attach the image with the next order number
-            $gallery->images()->attach($imageId, [
-                'order' => $maxOrder + 1,
-            ]);
+            DB::transaction(function () use ($gallery, $imageId) {
+                // Lock the gallery row so concurrent adds get distinct order values.
+                Gallery::whereKey($gallery->id)->lockForUpdate()->first();
+                $maxOrder = $gallery->images()->max('order') ?? -1;
+                $gallery->images()->attach($imageId, [
+                    'order' => $maxOrder + 1,
+                ]);
+            });
 
             return response()->json([
                 'message' => 'Image added to gallery successfully',
                 'gallery' => $gallery->load(['images', 'coverImage']),
             ]);
-        } catch (\Exception $e) {
-            // Check if it's a duplicate entry error
-            if (strpos($e->getMessage(), 'Duplicate entry') !== false ||
-                strpos($e->getMessage(), 'unique_gallery_image') !== false) {
+        } catch (QueryException $e) {
+            if ($e->getCode() === '23000') {
                 return response()->json(['error' => 'Image is already in this gallery'], 409);
             }
 
-            Log::error('Error adding image to gallery: ' . $e->getMessage(), [
-                'exception' => $e,
-                'gallery_id' => $galleryId,
-                'image_id' => $imageId,
-            ]);
-            return response()->json(['error' => 'Failed to add image to gallery: ' . $e->getMessage()], 500);
+            Log::error('Error adding image to gallery', ['exception_class' => get_class($e), 'gallery_id' => $galleryId,
+                'image_id' => $imageId]);
+            return response()->json(['error' => 'Failed to add image to gallery.'], 500);
+        } catch (\Exception $e) {
+            Log::error('Error adding image to gallery', ['exception_class' => get_class($e), 'gallery_id' => $galleryId,
+                'image_id' => $imageId]);
+            return response()->json(['error' => 'Failed to add image to gallery.'], 500);
         }
     }
 
@@ -237,12 +230,9 @@ class GalleryController extends Controller {
                 'gallery' => $gallery->load(['images', 'coverImage']),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error removing image from gallery: ' . $e->getMessage(), [
-                'exception' => $e,
-                'gallery_id' => $galleryId,
-                'image_id' => $imageId,
-            ]);
-            return response()->json(['error' => 'Failed to remove image from gallery: ' . $e->getMessage()], 500);
+            Log::error('Error removing image from gallery', ['exception_class' => get_class($e), 'gallery_id' => $galleryId,
+                'image_id' => $imageId]);
+            return response()->json(['error' => 'Failed to remove image from gallery.'], 500);
         }
     }
 
@@ -270,12 +260,9 @@ class GalleryController extends Controller {
                 'gallery' => $gallery->load(['coverImage', 'images']),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error setting cover image: ' . $e->getMessage(), [
-                'exception' => $e,
-                'gallery_id' => $galleryId,
-                'image_id' => $request->image_id,
-            ]);
-            return response()->json(['error' => 'Failed to set cover image: ' . $e->getMessage()], 500);
+            Log::error('Error setting cover image', ['exception_class' => get_class($e), 'gallery_id' => $galleryId,
+                'image_id' => $request->image_id]);
+            return response()->json(['error' => 'Failed to set cover image.'], 500);
         }
     }
 
@@ -313,12 +300,8 @@ class GalleryController extends Controller {
         } catch (\Exception $e) {
             DB::rollBack();
 
-            Log::error('Error updating image order: ' . $e->getMessage(), [
-                'exception' => $e,
-                'gallery_id' => $galleryId,
-                'image_ids' => $request->image_ids,
-            ]);
-            return response()->json(['error' => 'Failed to update image order: ' . $e->getMessage()], 500);
+            Log::error('Error updating image order', ['exception_class' => get_class($e), 'gallery_id' => $galleryId]);
+            return response()->json(['error' => 'Failed to update image order.'], 500);
         }
     }
 }
