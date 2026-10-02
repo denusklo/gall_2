@@ -92,7 +92,7 @@ class FcmNotificationService
                     // Both Firefox and Edge use their own push services (not FCM directly)
                     $webPushConfig = WebPushConfig::fromArray([
                         'fcm_options' => [
-                            'link' => url('/requests/my')
+                            'link' => url('/images')
                         ],
                         // Add headers for Firefox/Edge compatibility
                         'headers' => [
@@ -191,7 +191,7 @@ class FcmNotificationService
             // Add WebPushConfig for Firefox support
             $webPushConfig = WebPushConfig::fromArray([
                 'fcm_options' => [
-                    'link' => url('/requests/my')
+                    'link' => url('/images')
                 ],
                 'headers' => [
                     'TTL' => '3600'

@@ -90,7 +90,6 @@ import { ref, onMounted } from 'vue';
 import { useGalleryStore } from '../../stores/gallery';
 import axios from 'axios';
 
-console.log('[AddToGalleryModal] Component script loading...');
 
 const props = defineProps({
   image: {
@@ -111,10 +110,8 @@ const success = ref(null);
 const availableGalleries = ref([]);
 const supabaseUrl = ref('');
 
-console.log('[AddToGalleryModal] Component initialized with image:', props.image);
 
 onMounted(async () => {
-  console.log('[AddToGalleryModal] Component mounted');
   await fetchSupabaseUrl();
   await loadGalleries();
 });
@@ -180,10 +177,8 @@ const getCoverImageUrl = (gallery) => {
 const loadGalleries = async () => {
   loading.value = true;
   try {
-    console.log('[AddToGalleryModal] Loading galleries...');
     await galleryStore.fetchGalleries(1, {});
     availableGalleries.value = galleryStore.galleries;
-    console.log('[AddToGalleryModal] Galleries loaded:', availableGalleries.value.length);
   } catch (err) {
     console.error('[AddToGalleryModal] Error loading galleries:', err);
     error.value = 'Failed to load galleries';
@@ -203,11 +198,9 @@ const handleAdd = async () => {
   success.value = null;
 
   try {
-    console.log('[AddToGalleryModal] Adding image to gallery:', selectedGalleryId.value);
     await galleryStore.addImageToGallery(selectedGalleryId.value, props.image.id);
 
     success.value = 'Image added successfully!';
-    console.log('[AddToGalleryModal] Image added successfully');
 
     // Close modal after a short delay to show success message
     setTimeout(() => {
@@ -222,7 +215,6 @@ const handleAdd = async () => {
 };
 
 const closeModal = () => {
-  console.log('[AddToGalleryModal] closeModal called');
   emit('close');
 };
 </script>

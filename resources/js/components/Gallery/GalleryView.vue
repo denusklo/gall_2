@@ -140,7 +140,6 @@ import ConfirmDialog from './ConfirmDialog.vue';
 import axios from 'axios';
 import Sortable from 'sortablejs';
 
-console.log('[GalleryView] Component script loading...');
 
 const props = defineProps({
     galleryId: {
@@ -160,7 +159,6 @@ const sortableInstance = ref(null);
 const reordering = ref(false);
 
 onMounted(async () => {
-    console.log('[GalleryView] Component mounted, galleryId:', props.galleryId);
     await fetchSupabaseUrl();
     await loadGallery();
     await nextTick();
@@ -191,9 +189,7 @@ const fetchSupabaseUrl = async () => {
 
 const loadGallery = async () => {
     try {
-        console.log('[GalleryView] Loading gallery:', props.galleryId);
         await galleryStore.fetchGallery(props.galleryId);
-        console.log('[GalleryView] Gallery loaded:', galleryStore.currentGallery);
     } catch (error) {
         console.error('[GalleryView] Error loading gallery:', error);
     }
@@ -234,19 +230,16 @@ const goBack = () => {
 };
 
 const viewImage = (image) => {
-    console.log('View image:', image);
     const fullUrl = getImageUrl(image);
     window.open(fullUrl, '_blank');
 };
 
 const onGalleryUpdated = async () => {
-    console.log('[GalleryView] Gallery updated, reloading...');
     showEditModal.value = false;
     await loadGallery();
 };
 
 const onImagesAdded = async () => {
-    console.log('[GalleryView] Images added, reloading...');
     showAddImagesModal.value = false;
     await loadGallery();
     // Re-initialize sortable after reload
@@ -258,10 +251,8 @@ const onImagesAdded = async () => {
 };
 
 const setCoverImage = async (imageId) => {
-    console.log('[GalleryView] Setting cover image:', imageId);
     try {
         await galleryStore.setCoverImage(props.galleryId, imageId);
-        console.log('[GalleryView] Cover image set successfully');
         await loadGallery(); // Reload to show updated cover badge
     } catch (error) {
         console.error('[GalleryView] Error setting cover image:', error);
@@ -270,17 +261,14 @@ const setCoverImage = async (imageId) => {
 };
 
 const confirmRemoveImage = (image) => {
-    console.log('[GalleryView] Confirm remove image:', image.title);
     imageToRemove.value = image;
     showRemoveConfirm.value = true;
 };
 
 const removeImage = async () => {
     if (imageToRemove.value) {
-        console.log('[GalleryView] Removing image from gallery:', imageToRemove.value.id);
         try {
             await galleryStore.removeImageFromGallery(props.galleryId, imageToRemove.value.id);
-            console.log('[GalleryView] Image removed successfully');
             await loadGallery(); // Reload gallery
             showRemoveConfirm.value = false;
             imageToRemove.value = null;
@@ -292,7 +280,6 @@ const removeImage = async () => {
 };
 
 const cancelRemove = () => {
-    console.log('[GalleryView] Remove cancelled');
     showRemoveConfirm.value = false;
     imageToRemove.value = null;
 };
@@ -303,7 +290,6 @@ const initializeSortable = () => {
         return;
     }
 
-    console.log('[GalleryView] Initializing Sortable on images grid');
 
     sortableInstance.value = new Sortable(imagesGrid.value, {
         animation: 150,
@@ -318,19 +304,16 @@ const initializeSortable = () => {
 };
 
 const handleReorder = async (event) => {
-    console.log('[GalleryView] Reorder event:', event);
 
     // Get the new order of image IDs
     const imageElements = imagesGrid.value.querySelectorAll('.image-card');
     const newOrder = Array.from(imageElements).map(el => parseInt(el.dataset.id));
 
-    console.log('[GalleryView] New order:', newOrder);
 
     // Save the new order
     reordering.value = true;
     try {
         await galleryStore.reorderImages(props.galleryId, newOrder);
-        console.log('[GalleryView] Images reordered successfully');
         // Reload to get updated data
         await loadGallery();
         // Re-initialize sortable after reload

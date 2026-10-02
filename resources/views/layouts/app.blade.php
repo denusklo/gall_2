@@ -2,7 +2,9 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 
 <head>
+    @unless(app()->environment('local'))
     <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    @endunless
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -10,6 +12,10 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>{{ config('app.name', 'Laravel') }}</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" sizes="32x32" href="/favicon.ico">
 
     {{-- Use mix() helper for both HMR and production builds --}}
     <link href="{{ mix('css/app.css') }}" rel="stylesheet">
@@ -91,16 +97,6 @@
                                 }
                             @endphp
 
-                            <!-- Link visible to all authenticated users -->
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ route('requests.my') }}">{{ __('My Requests') }}</a>
-                            </li>
-
-                            <!-- All Requests - visible to all authenticated users -->
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ route('requests.all') }}">{{ __('All Requests') }}</a>
-                            </li>
-
                             <!-- Images Link - Individual images -->
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ route('images.index') }}">{{ __('Images') }}</a>
@@ -110,6 +106,13 @@
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ route('galleries.index') }}" title="Albums feature - uses same view for now">
                                     {{ __('Galleries') }}
+                                </a>
+                            </li>
+
+                            <!-- Storage Settings Link -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('settings.storage') }}">
+                                    {{ __('Storage Settings') }}
                                 </a>
                             </li>
 

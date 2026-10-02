@@ -167,10 +167,8 @@ const onCategoryChanged = (categoryId) => {
 
 const confirmDelete = async () => {
     if (imageToDelete.value) {
-        console.log('[GalleryIndex] confirmDelete: Starting delete for image id:', imageToDelete.value);
         try {
             await imageStore.deleteImage(imageToDelete.value);
-            console.log('[GalleryIndex] confirmDelete: Delete successful');
 
             // If we deleted the last item on the current page, go to previous page
             if (imageStore.images.length === 0 && imageStore.pagination.currentPage > 1) {
@@ -185,8 +183,10 @@ const confirmDelete = async () => {
             console.error('[GalleryIndex] confirmDelete: Error deleting image:', error);
             // Show error to user using iziToast
             if (window.iziToast) {
-                window.iziToast.error({
-                    title: 'Error',
+                // Pending durable deletes are not failures: the image stays until storage confirms.
+                const pending = error.operation?.pending === true;
+                window.iziToast[pending ? 'warning' : 'error']({
+                    title: pending ? 'Deletion pending' : 'Error',
                     message: error.message || 'Failed to delete image',
                     position: 'topRight'
                 });
@@ -202,12 +202,10 @@ const cancelDelete = () => {
 };
 
 const addToGallery = (image) => {
-    console.log('[GalleryIndex] Opening add to gallery modal for image:', image.title);
     imageToAddToGallery.value = image;
 };
 
 const onImageAddedToGallery = () => {
-    console.log('[GalleryIndex] Image added to gallery successfully');
     imageToAddToGallery.value = null;
     // Refresh images to update the galleries relationship
     // This will recalculate the isInAllGalleries computed property

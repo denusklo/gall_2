@@ -2,6 +2,40 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 
+// Failure responses from durable storage operations carry operation_id/operation_state/retryable.
+// There is no status endpoint yet, so these messages give static guidance (refresh later)
+// instead of polling. Returns null when the error is not an operation response.
+export function storageOperationInfo(error, action) {
+  const data = error?.response?.data;
+  if (!data || typeof data.operation_id !== 'string') return null;
+  const ref = data.operation_id.slice(0, 8);
+  const state = data.operation_state;
+  const retryable = data.retryable === true;
+  let message;
+  if (state === 'needs_review') {
+    message = `This ${action} needs review and was not completed automatically (ref ${ref}).`;
+  } else if (action === 'upload' && state === 'uploaded') {
+    message = `Your file reached storage but is not in the gallery yet (ref ${ref}). It will be added automatically; refresh later. You do not need to upload it again.`;
+  } else if (action === 'upload' && retryable) {
+    message = `Upload result is not confirmed yet (ref ${ref}). If the file reached storage it will be added automatically; refresh later before uploading it again.`;
+  } else if (action === 'delete' && retryable) {
+    message = `Deletion is pending until storage confirms the file is gone (ref ${ref}). The image stays visible until then. You can try again now, or it will be completed automatically later; refresh to check.`;
+  } else if (action === 'delete' && state === 'deleting') {
+    message = `Deletion is already in progress (ref ${ref}). Refresh in a moment.`;
+  } else {
+    message = `The ${action} could not be completed (ref ${ref}).`;
+  }
+  return { id: data.operation_id, state, retryable, pending: retryable || state === 'uploaded' || state === 'deleting', message };
+}
+
+function operationError(error, action, fallback) {
+  const info = storageOperationInfo(error, action);
+  const failure = new Error(info ? info.message : fallback);
+  failure.operation = info;
+  failure.response = error?.response;
+  return failure;
+}
+
 export const useImageStore = defineStore('image', {
   state: () => ({
     images: [],
@@ -51,7 +85,7 @@ export const useImageStore = defineStore('image', {
     },
 
     // Original Supabase upload method
-    async uploadFile(file, title, description = '', categoryIds = []) {
+    async uploadFile(file, title, description = '', categoryIds = [], credentialId = null) {
       this.loading = true;
       this.uploadProgress = 0;
 
@@ -61,6 +95,9 @@ export const useImageStore = defineStore('image', {
         formData.append('file', file);
         formData.append('title', title);
         formData.append('description', description || '');
+        if (credentialId) {
+          formData.append('credential_id', credentialId);
+        }
         if (categoryIds && categoryIds.length > 0) {
           categoryIds.forEach((id, index) => {
             formData.append(`category_ids[${index}]`, id);
@@ -86,8 +123,9 @@ export const useImageStore = defineStore('image', {
         return response.data;
       } catch (error) {
         console.error('Error uploading file:', error);
-        this.error = error.response?.data?.message || 'Failed to upload file';
-        throw error;
+        const failure = operationError(error, 'upload', error.response?.data?.message || 'Failed to upload file');
+        this.error = failure.message;
+        throw failure;
       } finally {
         this.loading = false;
         this.uploadProgress = 0;
@@ -95,29 +133,27 @@ export const useImageStore = defineStore('image', {
     },
 
     // Vercel Blob upload method - Manual implementation (no SDK)
-    async uploadFileToVercel(file, title, description = '', categoryIds = []) {
+    async uploadFileToVercel(file, title, description = '', categoryIds = [], credentialId = null) {
       this.loading = true;
       this.uploadProgress = 0;
 
       try {
         // Step 1: Get client upload token from our backend
-        console.log('Step 1: Requesting client token from backend...');
         const tokenResponse = await axios.post('/apiv/_1/vercel/generate-client-token', {
           filename: file.name,
           content_type: file.type,
           size: file.size,
           title: title,
           description: description,
-          category_ids: categoryIds
+          category_ids: categoryIds,
+          credential_id: credentialId ?? null
         });
 
         const { clientToken, pathname, metadata } = tokenResponse.data;
-        console.log('Client token received. Pathname:', pathname);
 
         // Step 2: Upload directly to Vercel Blob Storage
         // CORRECT endpoint: https://vercel.com/api/blob (not blob.vercel-storage.com!)
         const uploadUrl = `https://vercel.com/api/blob/${pathname}`;
-        console.log('Step 2: Uploading to Vercel Blob:', uploadUrl);
 
         // Create a clean axios instance without any default headers for Vercel upload
         const vercelAxios = axios.create();
@@ -135,14 +171,11 @@ export const useImageStore = defineStore('image', {
               (progressEvent.loaded * 100) / progressEvent.total
             );
             this.uploadProgress = progress;
-            console.log(`Upload progress: ${progress}%`);
           }
         });
 
-        console.log('Upload successful! Vercel response:', uploadResponse.data);
 
         // Step 3: Notify our backend to save in the database
-        console.log('Step 3: Saving to database...');
         const callbackResponse = await axios.post('/apiv/_1/vercel/upload-callback', {
           blob: {
             url: uploadResponse.data.url,
@@ -154,7 +187,6 @@ export const useImageStore = defineStore('image', {
           metadata: metadata
         });
 
-        console.log('Image saved successfully!', callbackResponse.data.image);
 
         // Add the new image to the list
         this.images.unshift(callbackResponse.data.image);
@@ -167,7 +199,10 @@ export const useImageStore = defineStore('image', {
 
         // Provide more detailed error messages
         let errorMessage = 'Failed to upload to Vercel';
-        if (error.response?.data?.error) {
+        const operation = storageOperationInfo(error, 'upload');
+        if (operation) {
+          errorMessage = operation.message;
+        } else if (error.response?.data?.error) {
           errorMessage = error.response.data.error;
         } else if (error.response?.data?.message) {
           errorMessage = error.response.data.message;
@@ -176,7 +211,9 @@ export const useImageStore = defineStore('image', {
         }
 
         this.error = errorMessage;
-        throw new Error(errorMessage);
+        const failure = new Error(errorMessage);
+        failure.operation = operation;
+        throw failure;
       } finally {
         this.loading = false;
         this.uploadProgress = 0;
@@ -184,9 +221,7 @@ export const useImageStore = defineStore('image', {
     },
 
     async deleteImage(id) {
-      console.log('[imageStore] deleteImage called with id:', id);
       const image = this.images.find(img => img.id === id);
-      console.log('[imageStore] Found image:', image);
 
       if (!image) {
         console.error('[imageStore] Image not found in local state');
@@ -196,17 +231,14 @@ export const useImageStore = defineStore('image', {
       try {
         // If it's a Vercel upload, delete from Vercel first
         if (image.storage_provider === 'vercel') {
-          console.log('[imageStore] Deleting from Vercel, URL:', image.storage_url);
           await axios.post('/apiv/_1/vercel/delete-blob', {
-            url: image.storage_url
+            url: image.storage_url,
+            credential_id: image.storage_credential_id ?? null
           });
-          console.log('[imageStore] Vercel blob deleted successfully');
         }
 
         // Then delete from database
-        console.log('[imageStore] Deleting image from API, endpoint:', `/apiv/_1/images/${id}`);
         await axios.delete(`/apiv/_1/images/${id}`);
-        console.log('[imageStore] API delete successful');
 
         // Only remove from local state if BOTH deletions succeeded
         this.images = this.images.filter(img => img.id !== id);
@@ -214,9 +246,10 @@ export const useImageStore = defineStore('image', {
       } catch (error) {
         console.error('[imageStore] Error deleting image:', error);
         console.error('[imageStore] Error response:', error.response);
-        const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to delete image';
-        this.error = errorMessage;
-        throw new Error(errorMessage);
+        const failure = operationError(error, 'delete',
+          error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to delete image');
+        this.error = failure.message;
+        throw failure;
       }
     },
 

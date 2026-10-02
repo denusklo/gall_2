@@ -112,7 +112,6 @@ import { useGalleryStore } from '../../stores/gallery';
 import { useImageStore } from '../../stores/image';
 import axios from 'axios';
 
-console.log('[CreateGalleryModal] Component script loading...');
 
 const emit = defineEmits(['close', 'gallery-created']);
 
@@ -131,17 +130,13 @@ const error = ref(null);
 const availableImages = ref([]);
 const supabaseUrl = ref('');
 
-console.log('[CreateGalleryModal] Component initialized');
 
 onMounted(async () => {
-  console.log('[CreateGalleryModal] Component mounted');
   await fetchSupabaseUrl();
   // Fetch images for selection
   try {
-    console.log('[CreateGalleryModal] Fetching images...');
     await imageStore.fetchImages(1, {});
     availableImages.value = imageStore.images;
-    console.log('[CreateGalleryModal] Images loaded:', availableImages.value.length);
   } catch (err) {
     console.error('[CreateGalleryModal] Failed to load images:', err);
   }
@@ -204,10 +199,8 @@ const toggleImageSelection = (imageId) => {
 };
 
 const handleSubmit = async () => {
-  console.log('[CreateGalleryModal] handleSubmit called');
   if (!formData.value.title.trim()) {
     error.value = 'Title is required';
-    console.log('[CreateGalleryModal] Validation failed: title is required');
     return;
   }
 
@@ -215,7 +208,6 @@ const handleSubmit = async () => {
   error.value = null;
 
   try {
-    console.log('[CreateGalleryModal] Creating gallery with data:', formData.value);
     const gallery = await galleryStore.createGallery({
       title: formData.value.title.trim(),
       description: formData.value.description.trim(),
@@ -223,7 +215,6 @@ const handleSubmit = async () => {
       image_ids: formData.value.selectedImages
     });
 
-    console.log('[CreateGalleryModal] Gallery created successfully');
     emit('gallery-created');
   } catch (err) {
     error.value = err.response?.data?.message || 'Failed to create gallery';
@@ -234,7 +225,6 @@ const handleSubmit = async () => {
 };
 
 const closeModal = () => {
-  console.log('[CreateGalleryModal] closeModal called');
   emit('close');
 };
 </script>

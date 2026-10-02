@@ -177,7 +177,6 @@ return [
         App\Providers\RouteServiceProvider::class,
 
         Kreait\Laravel\Firebase\ServiceProvider::class,
-        App\Providers\VercelBlobServiceProvider::class,
 
     ],
 

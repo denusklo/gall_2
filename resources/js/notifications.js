@@ -32,7 +32,6 @@ const NotificationService = {
             });
 
             if (response.status === 401) {
-                console.log('[Notifications] Token invalid, refreshing...');
                 await this.refreshToken();
             }
         } catch (error) {
@@ -55,7 +54,6 @@ const NotificationService = {
                 const data = await response.json();
                 localStorage.setItem('api_token', data.token);
                 this.tokenRefreshed = true;
-                console.log('[Notifications] Token refreshed successfully');
             }
         } catch (error) {
             console.error('[Notifications] Token refresh failed:', error);

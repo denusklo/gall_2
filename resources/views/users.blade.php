@@ -65,9 +65,6 @@
         <div class="col-md-3">
             <div class="card">
                 <div class="card-body">
-                    <a href="{{route('request.create')}}" class="btn btn-success btn-block">Create New Request</a>
-                </div>
-                <div class="card-body">
                     There are total {{$totalRequests}} request/s.
                 </div>
             </div>

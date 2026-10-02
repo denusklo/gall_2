@@ -5,11 +5,10 @@
         <div class="gallery-item-inner" @click.stop="handleItemClick">
             <div class="gallery-image">
                 <img 
-                    :src="imageUrl" 
+                    :src="imageUrl || placeholderUrl"
                     :alt="gallery.title" 
                     loading="lazy" 
                     @error="handleImageError"
-                    onerror="this.onerror=null; this.src='https://placehold.co/400';"
                 />
             </div>
             <div class="gallery-info">
@@ -50,7 +49,8 @@
         <!-- Use Teleport to render the modal outside the gallery-item DOM -->
         <teleport to="body" v-if="showDetail">
             <gallery-detail 
-                :gallery="gallery" 
+                :gallery="gallery"
+                :resolved-url="imageUrl"
                 @close="closeDetail" 
                 @edit="$emit('edit', gallery)"
                 @delete="$emit('delete', $event)" 
@@ -60,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue';
 import { defineProps, defineEmits } from 'vue';
 import GalleryDetail from './GalleryDetail.vue';
 import { useGalleryStore } from '../../stores/gallery';
@@ -78,29 +78,11 @@ const galleryStore = useGalleryStore();
 const showDetail = ref(false);
 const refreshedUrl = ref(null);
 const urlError = ref(false);
-const supabaseUrl = ref(''); // Store the URL in a ref
-
-const fetchSupabaseUrl = async () => {
-    // First check localStorage
-    const cachedUrl = localStorage.getItem('supabaseUrl');
-    if (cachedUrl) {
-        supabaseUrl.value = cachedUrl;
-        return;
-    }
-    
-    try {
-        const response = await axios.get('/apiv/_1/config/supabase-url');
-        supabaseUrl.value = response.data.url;
-        
-        // Save to localStorage for future use
-        localStorage.setItem('supabaseUrl', response.data.url);
-    } catch (error) {
-        console.error('Failed to fetch Supabase URL:', error);
-    }
-};
+let sourceGeneration = 0;
+const placeholderUrl = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"/%3E';
+const isAbsoluteUrl = value => typeof value === 'string' && /^https?:\/\//.test(value);
 
 onMounted(() => {
-    fetchSupabaseUrl();
     // Load galleries if not already loaded
     if (galleryStore.galleries.length === 0) {
         galleryStore.fetchGalleries();
@@ -133,21 +115,8 @@ const imageUrl = computed(() => {
         return refreshedUrl.value;
     }
     
-    // Otherwise, check if the stored URL needs the Supabase base URL
     const storedUrl = props.gallery.storage_url || '';
-    
-    // If the URL starts with http or https, assume it's a complete URL
-    if (storedUrl.startsWith('http://') || storedUrl.startsWith('https://')) {
-        return storedUrl;
-    }
-    
-    // If no Supabase URL is available yet (still loading), use a placeholder
-    if (!supabaseUrl.value) {
-        return 'https://placehold.co/400';
-    }
-    
-    // If not, prepend the Supabase URL
-    return `${supabaseUrl.value}/storage/v1${storedUrl.startsWith('/') ? '' : '/'}${storedUrl}`;
+    return isAbsoluteUrl(storedUrl) ? storedUrl : '';
 });
 
 const formatFileSize = (bytes) => {
@@ -176,19 +145,35 @@ const handleImageError = async () => {
 };
 
 const refreshImageUrl = async () => {
+    if (props.gallery.storage_provider !== 'supabase') return;
+    const generation = sourceGeneration;
+    const imageId = props.gallery.id;
+
     try {
-        const response = await axios.get(`/apiv/_1/galleries/${props.gallery.id}/signed-url`);
-        
+        const response = await axios.get(`/apiv/_1/images/${imageId}/signed-url`);
+        if (generation !== sourceGeneration) return;
+
         // Check the actual structure of the response
-        if (response.data && response.data.signedUrl) {
+        if (isAbsoluteUrl(response.data?.signedUrl)) {
             refreshedUrl.value = response.data.signedUrl;
         } else {
-            console.error('Signed URL not found in response:', response.data);
+            console.error('Signed URL not found in response.');
         }
     } catch (error) {
-        console.error('Failed to refresh image URL:', error);
+        if (generation === sourceGeneration) console.error('Failed to refresh image URL.');
     }
 };
+
+watch(() => [props.gallery.id, props.gallery.storage_provider, props.gallery.storage_url], () => {
+    sourceGeneration++;
+    refreshedUrl.value = null;
+    urlError.value = false;
+    if (props.gallery.storage_provider === 'supabase' && !isAbsoluteUrl(props.gallery.storage_url)) {
+        handleImageError();
+    }
+}, { immediate: true, flush: 'sync' });
+
+onBeforeUnmount(() => { sourceGeneration++; });
 
 // New methods to handle the modal properly
 const handleItemClick = () => {

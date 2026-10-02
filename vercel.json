@@ -20,6 +20,10 @@
             "dest": "public/$1/$2"
         },
         {
+            "src": "/favicon\\.(ico|svg)",
+            "dest": "/public/favicon.$1"
+        },
+        {
             "src": "/(.*)",
             "dest": "/api/index.php"
         }
@@ -41,5 +45,11 @@
         "SESSION_DRIVER": "cookie",
         "LOG_CHANNEL": "stderr"
     },
+    "crons": [
+        {
+            "path": "/apiv/_1/internal/storage-maintenance",
+            "schedule": "0 16 * * *"
+        }
+    ],
     "buildCommand": "npm run build"
 }

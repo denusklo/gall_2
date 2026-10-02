@@ -3,6 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Storage\StorageCredentialService;
+use App\Services\Storage\UploadReceiptService;
+use App\Services\Storage\StorageOperationService;
+use App\Models\Image;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -11,15 +15,18 @@ use Illuminate\Support\Facades\Config;
 
 class GalleryStorageController extends Controller
 {
-    protected $supabaseUrl;
-    protected $supabaseKey;
-    protected $storageBucket;
+    protected StorageCredentialService $credentialService;
 
-    public function __construct()
+    protected UploadReceiptService $receipts;
+
+    protected StorageOperationService $operations;
+
+    public function __construct(StorageCredentialService $credentialService, UploadReceiptService $receipts,
+        StorageOperationService $operations)
     {
-        $this->supabaseUrl = config('services.supabase.url');
-        $this->supabaseKey = config('services.supabase.key');
-        $this->storageBucket = config('services.supabase.storage_bucket', 'gallery-uploads');
+        $this->credentialService = $credentialService;
+        $this->receipts = $receipts;
+        $this->operations = $operations;
     }
 
     /**
@@ -34,53 +41,58 @@ class GalleryStorageController extends Controller
         $request->validate([
             'filename' => 'required|string',
             'content_type' => 'required|string',
-            'size' => 'required|integer|max:52428800', // 50MB max
+            'size' => 'required|integer|min:0|max:52428800', // 50MB max
+            'credential_id' => 'nullable|integer|min:1',
         ]);
+        $creds = $this->credentialService->resolveForUpload($request->user(), 'supabase', $request->input('credential_id'));
+        abort_unless(is_string($creds['service_key']) && trim($creds['service_key']) !== '',
+            422, 'A Supabase service key is required to issue upload URLs.');
 
-        try {
-            // Generate a unique file path
-            $filename = Str::slug(pathinfo($request->filename, PATHINFO_FILENAME)) . '-' . Str::random(8);
-            $extension = pathinfo($request->filename, PATHINFO_EXTENSION);
-            $filePath = date('Y/m/d') . '/' . $filename . '.' . $extension;
-
-            // For direct uploads to a public bucket
-            $uploadUrl = "{$this->supabaseUrl}/storage/v1/object/{$this->storageBucket}/{$filePath}";
-            
-            // Generate the public URL for the file
-            $fileUrl = "{$this->supabaseUrl}/storage/v1/object/public/{$this->storageBucket}/{$filePath}";
-
-            return response()->json([
-                'uploadUrl' => $uploadUrl,
-                'method' => 'PUT',  // Use PUT for direct uploads
-                'headers' => [
-                    'authorization' => 'Bearer ' . $this->supabaseKey,
-                    'Content-Type' => $request->content_type,
-                    'x-upsert' => 'true'  // This allows overwriting if a file exists
-                ],
-                'path' => $filePath,
-                'bucket' => $this->storageBucket,
-                'fileUrl' => $fileUrl,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error generating upload URL: ' . $e->getMessage(), [
-                'exception' => $e,
-            ]);
-            return response()->json(['error' => 'Failed to generate upload URL: ' . $e->getMessage()], 500);
+        $metadata = ['filename' => $request->filename, 'content_type' => $request->content_type, 'size' => (int) $request->size];
+        // Commit the exact account/bucket/path intent before requesting any capability.
+        $op = $this->operations->reserveUpload($request->user(), 'supabase', $creds, $creds['bucket'], $request->filename,
+            $request->content_type, (int) $request->size, $metadata,
+            (int) config('storage_maintenance.supabase_upload_ttl_seconds', 7200));
+        $lease = $this->operations->claimLease($op);
+        abort_unless($lease !== null, 409, 'This upload is already in progress.');
+        $this->operations->fenced($op, $lease, ['state' => 'authorizing', 'remote_started_at' => now()]);
+        // Exact-path signed upload with signed upsert=false; never the broad account key.
+        $uploadUrl = $this->operations->supabaseSignedUploadUrl($op, $creds);
+        if ($uploadUrl === null) {
+            $this->operations->release($op, $lease, ['state' => 'authorization_failed', 'last_error_code' => 'sign_upload_failed']);
+            return response()->json(['error' => 'Failed to generate upload URL.'] + $op->publicFields(), 502);
         }
+        $this->operations->release($op, $lease, ['state' => 'authorized']);
+        $base = rtrim($creds['url'], '/');
+
+        return response()->json([
+            'uploadUrl' => $uploadUrl,
+            'method' => 'PUT',
+            'headers' => ['Content-Type' => $request->content_type],
+            'path' => $op->path,
+            'bucket' => $op->bucket,
+            'fileUrl' => "{$base}/storage/v1/object/public/{$op->bucket}/{$op->path}",
+            'credential_id' => $creds['credential_id'],
+            'receipt' => $this->receipts->issue($request->user(), 'supabase', $creds, $op->path, $op->bucket, $metadata, $op->uuid),
+            'operation_id' => $op->uuid,
+        ]);
     }
 
     /**
-     * Check if the storage bucket exists
+     * Check if storage bucket exists
      *
      * @return \Illuminate\Http\JsonResponse
      */
     public function checkBucket()
     {
         try {
+            $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+            $bucket = $creds['bucket'];
+
             $response = Http::withHeaders([
-                'apikey' => $this->supabaseKey,
-                'Authorization' => 'Bearer ' . $this->supabaseKey,
-            ])->get("{$this->supabaseUrl}/storage/v1/bucket/{$this->storageBucket}");
+                'apikey' => $creds['key'],
+                'Authorization' => 'Bearer ' . $creds['key'],
+            ])->get("{$creds['url']}/storage/v1/bucket/{$bucket}");
 
             if ($response->successful()) {
                 return response()->json([
@@ -110,28 +122,29 @@ class GalleryStorageController extends Controller
     public function deleteFile(Request $request)
     {
         $request->validate([
-            'path' => 'required|string',
+            'image_id' => 'nullable|integer|min:1',
+            'path' => 'required_without:image_id|string',
+            'credential_id' => 'nullable|integer|min:1',
         ]);
-
-        try {
-            $response = Http::withHeaders([
-                'apikey' => $this->supabaseKey,
-                'Authorization' => 'Bearer ' . $this->supabaseKey,
-            ])->delete("{$this->supabaseUrl}/storage/v1/object/{$this->storageBucket}/{$request->path}");
-
-            if ($response->successful()) {
-                return response()->json(['message' => 'File deleted successfully']);
-            } else {
-                return response()->json([
-                    'error' => 'Failed to delete file: ' . ($response->json()['message'] ?? 'Unknown error')
-                ], $response->status());
-            }
-        } catch (\Exception $e) {
-            Log::error('Error deleting file: ' . $e->getMessage(), [
-                'exception' => $e,
-                'path' => $request->path,
-            ]);
-            return response()->json(['error' => 'Failed to delete file: ' . $e->getMessage()], 500);
+        $query = Image::where('user_id', auth()->id());
+        $images = $request->filled('image_id')
+            ? $query->whereKey($request->image_id)->get()
+            : $query->where('storage_provider', 'supabase')->where('storage_path', $request->path)->limit(2)->get();
+        abort_if($images->isEmpty(), 404);
+        abort_unless($images->count() === 1, 422, 'Ambiguous path; supply image_id.');
+        $image = $images->first();
+        abort_unless($image->isSupabaseStorage(), 422, 'Supabase image required.');
+        if ($request->exists('path')) {
+            $this->receipts->matches($request->path === $image->storage_path, 'path', 'Path does not match image.');
         }
+        if ($request->exists('credential_id')) {
+            $id = $request->input('credential_id');
+            $this->receipts->matches($id === null ? $image->storage_credential_id === null
+                : (int) $id === (int) $image->storage_credential_id, 'credential_id', 'Credential does not match image.');
+        }
+        abort_unless(($image->storage_credential_id || $image->storage_account_id) && $image->storage_bucket && $image->storage_path,
+            422, 'A recorded Supabase account, bucket and path are required.');
+        // Full durable delete: provider proof, then the image row, in one journaled intent.
+        return app(ImageController::class)->deleteDurably($image);
     }
 }
