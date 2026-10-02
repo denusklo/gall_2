@@ -30,6 +30,14 @@ class UserSettings extends Model
      *
      * @var array
      */
+    /** Legacy encrypted storage secrets; never serialize them. */
+    protected $hidden = [
+        'supabase_url',
+        'supabase_key',
+        'supabase_service_key',
+        'vercel_blob_token',
+    ];
+
     protected $casts = [
         'supabase_url' => 'encrypted',
         'supabase_key' => 'encrypted',
