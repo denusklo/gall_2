@@ -61,7 +61,7 @@ class FirebaseUserController extends Controller
         $auth = $this->auth;
 
         if (empty(session()->get('verified_user_id'))) {
-            return redirect()->route('firebase.login.form')->with('error', 'Login to access this page');
+            return redirect()->route('login')->with('error', 'Login to access this page');
         }
         
         $uid = $this->targetUid($request);
@@ -72,7 +72,7 @@ class FirebaseUserController extends Controller
             $phone = $user->phoneNumber;
             return view('user.edit', compact('name', 'phone', 'uid'));
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
-            return redirect()->route('firebase.login.form')->with('error', $e->getMessage());
+            return redirect()->route('login')->with('error', $e->getMessage());
         }
     }
 
@@ -81,7 +81,7 @@ class FirebaseUserController extends Controller
         $auth = $this->auth;
 
         if (empty(session()->get('verified_user_id'))) {
-            return redirect()->route('firebase.login.form')->with('error', 'Login to access this page');
+            return redirect()->route('login')->with('error', 'Login to access this page');
         }
 
         $uid = $this->targetUid($request);
@@ -117,7 +117,7 @@ class FirebaseUserController extends Controller
             
             // Check if the user has permission to delete (you may want to add admin check here)
             if (empty(session()->get('verified_user_id'))) {
-                return redirect()->route('firebase.login.form')->with('error', 'Login to access this page');
+                return redirect()->route('login')->with('error', 'Login to access this page');
             }
             
             // Delete the user
@@ -126,7 +126,7 @@ class FirebaseUserController extends Controller
             // If user is deleting their own account, log them out
             if ($uid === session()->get('verified_user_id')) {
                 session()->forget('verified_user_id');
-                return redirect()->route('firebase.login.form')->with('success', 'Your account has been deleted successfully!');
+                return redirect()->route('login')->with('success', 'Your account has been deleted successfully!');
             }
             
             return redirect()->back()->with('success', 'User deleted successfully!');

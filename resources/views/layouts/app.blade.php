@@ -158,55 +158,12 @@
                         <!-- Authentication Links -->
                         @guest
                             @if (!session()->has('verified_user_id'))
-                                @if(config('app.debug'))
-                                    <!-- Debug mode: Dropdowns with alternatives -->
-                                    <li class="nav-item dropdown">
-                                        <a class="nav-link dropdown-toggle" href="#" role="button"
-                                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                            {{ __('Login') }}
-                                        </a>
-                                        <div class="dropdown-menu" aria-labelledby="loginDropdown">
-                                            <a class="dropdown-item font-weight-bold" href="{{ route('login') }}">
-                                                <i class="fas fa-sign-in-alt mr-2"></i>{{ __('Login') }}
-                                            </a>
-                                            <div class="dropdown-divider"></div>
-                                            <div class="dropdown-header text-muted small">{{ __('Alternatives:') }}</div>
-                                            <a class="dropdown-item text-muted small" href="{{ route('mysql.login.form') }}">
-                                                <i class="fas fa-database mr-2"></i>{{ __('MySQL Only') }}
-                                            </a>
-                                            <a class="dropdown-item text-muted small" href="{{ route('firebase.login.form') }}">
-                                                <i class="fas fa-fire mr-2"></i>{{ __('Firebase Only') }}
-                                            </a>
-                                        </div>
-                                    </li>
-                                    <li class="nav-item dropdown">
-                                        <a class="nav-link dropdown-toggle" href="#" role="button"
-                                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                            {{ __('Register') }}
-                                        </a>
-                                        <div class="dropdown-menu" aria-labelledby="registerDropdown">
-                                            <a class="dropdown-item font-weight-bold" href="{{ route('register') }}">
-                                                <i class="fas fa-user-plus mr-2"></i>{{ __('Register') }}
-                                            </a>
-                                            <div class="dropdown-divider"></div>
-                                            <div class="dropdown-header text-muted small">{{ __('Alternatives:') }}</div>
-                                            <a class="dropdown-item text-muted small" href="{{ route('mysql.register') }}">
-                                                <i class="fas fa-database mr-2"></i>{{ __('MySQL Only') }}
-                                            </a>
-                                            <a class="dropdown-item text-muted small" href="{{ route('firebase.create') }}">
-                                                <i class="fas fa-fire mr-2"></i>{{ __('Firebase Only') }}
-                                            </a>
-                                        </div>
-                                    </li>
-                                @else
-                                    <!-- Production mode: Simple buttons -->
                                     <li class="nav-item">
                                         <a class="nav-link" href="{{ route('login') }}">{{ __('Login') }}</a>
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link" href="{{ route('register') }}">{{ __('Register') }}</a>
                                     </li>
-                                @endif
                             @else
                                 <li class="nav-item dropdown">
                                     <a id="firebaseUserDropdown" class="nav-link dropdown-toggle" href="#" role="button"

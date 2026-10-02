@@ -5,7 +5,6 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Http\Controllers\Firebase\FirebaseAuthController;
 
 class RedirectIfAuthenticated
 {
@@ -29,9 +28,13 @@ class RedirectIfAuthenticated
         }
         
         // Check Firebase auth
-        $firebaseAuth = new FirebaseAuthController();
-        if ($firebaseAuth->authentication()) {
-            return redirect()->route('home');
+        if (session()->get('verified_user_id')) {
+            try {
+                app('firebase.auth')->verifyIdToken(session()->get('idTokenString'));
+                return redirect()->route('home');
+            } catch (\Throwable $e) {
+                // Invalid or expired token: treat as guest.
+            }
         }
 
         return $next($request);
