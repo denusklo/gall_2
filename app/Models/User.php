@@ -49,8 +49,8 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
-        'firebase_id_token' => 'encrypted',
-        'firebase_refresh_token' => 'encrypted',
+        'firebase_id_token' => \App\Casts\TolerantEncrypted::class,
+        'firebase_refresh_token' => \App\Casts\TolerantEncrypted::class,
     ];
 
     /**
