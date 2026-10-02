@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { peekApiToken, refreshApiToken, clearApiToken } from './apiTokenRefresh';
+import { peekApiToken, refreshApiToken, clearApiToken, lastApiTokenStatus } from './apiTokenRefresh';
 
 let registered = false;
 
@@ -59,8 +59,14 @@ export function registerAuthInterceptor() {
                         return axios(config);
                     }
                 }
-                clearApiToken();
-                window.location.href = '/login';
+                // Only leave for /login when the session itself is gone (/token answered 401).
+                // A failing token endpoint (5xx / network) or a token the API rejects while the
+                // session is valid must NOT redirect: /login bounces authenticated users straight
+                // back to /images, which reloads the page and repeats the request forever.
+                if (lastApiTokenStatus() === 401) {
+                    clearApiToken();
+                    window.location.href = '/login';
+                }
             } else if (status === 419) {
                 showSessionExpiredBanner();
             }

@@ -21,6 +21,14 @@ export function peekApiToken() {
     return window.__apiToken || null;
 }
 
+/**
+ * HTTP status of the last token request (401 = no valid session, other = server/network
+ * failure, 0 = network error, null = not requested yet).
+ */
+export function lastApiTokenStatus() {
+    return window.__apiTokenStatus ?? null;
+}
+
 /** Forget the in-memory token (e.g. on logout / 401). */
 export function clearApiToken() {
     window.__apiToken = null;
@@ -45,6 +53,7 @@ export function refreshApiToken() {
                 },
                 credentials: 'same-origin'
             });
+            window.__apiTokenStatus = response.status;
             if (!response.ok) {
                 window.__apiToken = null;
                 return null;
@@ -54,6 +63,7 @@ export function refreshApiToken() {
             return window.__apiToken;
         } catch (error) {
             console.error('[ApiToken] Refresh failed:', error);
+            window.__apiTokenStatus = 0;
             return null;
         } finally {
             window.__apiTokenRefreshPromise = null;
@@ -69,4 +79,4 @@ export async function getApiToken() {
 }
 
 // For non-bundled inline scripts (e.g. Blade views): `await window.ApiToken.get()`.
-window.ApiToken = { get: getApiToken, refresh: refreshApiToken, peek: peekApiToken, clear: clearApiToken };
+window.ApiToken = { get: getApiToken, refresh: refreshApiToken, peek: peekApiToken, clear: clearApiToken, lastStatus: lastApiTokenStatus };
