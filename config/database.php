@@ -121,7 +121,7 @@ return [
 
     'redis' => [
 
-        'client' => env('REDIS_CLIENT', 'predis'),
+        'client' => env('REDIS_CLIENT', 'phpredis'), // predis/predis is not installed
         'connection' => 'default',
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),

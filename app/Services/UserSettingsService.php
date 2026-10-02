@@ -4,177 +4,90 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\UserSettings;
-use Illuminate\Support\Facades\Http;
+use App\Services\Storage\TrustedStorageOriginPolicy;
 use Illuminate\Support\Facades\Log;
 
 class UserSettingsService
 {
     /**
-     * Test Supabase connection with provided credentials.
+     * Test Supabase credentials. The URL must be a hosted project (https://<ref>.supabase.co);
+     * the request is DNS-pinned to a public address with redirects disabled. Callers validate the
+     * endpoint first (422); this re-checks so the service is safe on its own.
      *
-     * @param string $url
-     * @param string $key
-     * @param string|null $serviceKey
      * @return array{success: bool, message: string, details: array}
      */
     public function testSupabaseConnection(string $url, string $key, ?string $serviceKey = null): array
     {
+        $policy = app(TrustedStorageOriginPolicy::class);
         try {
-            // First validate the format
-            if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                return [
-                    'success' => false,
-                    'message' => 'Invalid URL format',
-                    'details' => [],
-                ];
-            }
-
-            if (!str_contains($url, 'supabase.co')) {
-                return [
-                    'success' => false,
-                    'message' => 'URL must be a valid Supabase URL (containing supabase.co)',
-                    'details' => [],
-                ];
-            }
-
-            // Test by listing buckets (requires service role key for admin operations)
-            $testKey = $serviceKey ?: $key;
-
-            $response = Http::withHeaders([
-                'apikey' => $testKey,
-                'Authorization' => 'Bearer ' . $testKey,
-            ])->get(rtrim($url, '/') . '/storage/v1/bucket');
-
-            $details = [
-                'status_code' => $response->status(),
-            ];
-
-            if ($response->successful()) {
-                $buckets = $response->json();
-
-                return [
-                    'success' => true,
-                    'message' => 'Connection successful. Found ' . count($buckets) . ' bucket(s).',
-                    'details' => array_merge($details, [
-                        'buckets' => array_column($buckets, 'name'),
-                        'buckets_count' => count($buckets),
-                    ]),
-                ];
-            }
-
-            // If we get 401/403, credentials might be invalid
-            if ($response->status() === 401 || $response->status() === 403) {
-                return [
-                    'success' => false,
-                    'message' => 'Authentication failed. Please check your API keys.',
-                    'details' => $details,
-                ];
-            }
-
-            // Other errors
-            $errorBody = $response->json();
-            $errorMessage = $errorBody['message'] ?? 'Unknown error';
-
-            return [
-                'success' => false,
-                'message' => 'Connection failed: ' . $errorMessage,
-                'details' => $details,
-            ];
+            $origin = $policy->supabaseOrigin($url);
+            $client = $policy->client($origin);
+        } catch (\RuntimeException $e) {
+            return ['success' => false, 'message' => TrustedStorageOriginPolicy::rejectionMessage($e->getMessage()), 'details' => []];
+        }
+        // Listing buckets needs the service role key for admin operations.
+        $testKey = $serviceKey ?: $key;
+        try {
+            $response = $client->withHeaders(['apikey' => $testKey, 'Authorization' => 'Bearer ' . $testKey])
+                ->get($origin . '/storage/v1/bucket');
         } catch (\Exception $e) {
-            Log::error('Supabase connection test failed', [
-                'exception' => $e->getMessage(),
-                'url' => $url,
-            ]);
-
+            Log::error('Supabase connection test failed', ['exception_class' => get_class($e)]);
+            return ['success' => false, 'message' => 'Connection failed. The project could not be reached.', 'details' => []];
+        }
+        $details = ['status_code' => $response->status()];
+        $buckets = $response->json();
+        if ($response->successful() && is_array($buckets)) {
+            $names = array_values(array_filter(array_column($buckets, 'name'), 'is_string'));
             return [
-                'success' => false,
-                'message' => 'Connection failed: ' . $e->getMessage(),
-                'details' => [],
+                'success' => true,
+                'message' => 'Connection successful. Found ' . count($names) . ' bucket(s).',
+                'details' => array_merge($details, ['buckets' => $names, 'buckets_count' => count($names)]),
             ];
         }
+        if (in_array($response->status(), [401, 403], true)) {
+            return ['success' => false, 'message' => 'Authentication failed. Please check your API keys.', 'details' => $details];
+        }
+        // Never reflect provider error bodies.
+        return ['success' => false, 'message' => 'Connection failed (HTTP ' . $response->status() . ').', 'details' => $details];
     }
 
     /**
-     * Test Vercel Blob connection with provided token.
+     * Test a Vercel Blob read-write token against the fixed Blob API (installed SDK list() contract).
      *
-     * @param string $token
      * @return array{success: bool, message: string, store_id: string|null, details: array}
      */
     public function testVercelBlobConnection(string $token): array
     {
-        try {
-            // First validate token format
-            $pattern = '/^vercel_blob_rw_([A-Za-z0-9]+)_/';
-            if (!preg_match($pattern, $token, $matches)) {
-                return [
-                    'success' => false,
-                    'message' => 'Invalid token format. Expected format: vercel_blob_rw_{storeId}_{secret}',
-                    'store_id' => null,
-                    'details' => [],
-                ];
-            }
-
-            $storeId = $matches[1];
-
-            // Test by listing blobs from the store
-            $apiUrl = 'https://vercel.com/api/blob';
-
-            $response = Http::withHeaders([
-                'authorization' => 'Bearer ' . $token,
-                'x-api-version' => '11',
-            ])->get($apiUrl . '/list', [
-                'limit' => 1,
-            ]);
-
-            $details = [
-                'status_code' => $response->status(),
-                'store_id' => $storeId,
-            ];
-
-            if ($response->successful() || $response->status() === 404) {
-                // 404 is acceptable - it just means the store is empty
-                return [
-                    'success' => true,
-                    'message' => 'Connection successful. Store ID: ' . $storeId,
-                    'store_id' => $storeId,
-                    'details' => array_merge($details, [
-                        'store_empty' => $response->status() === 404,
-                    ]),
-                ];
-            }
-
-            // Authentication failure
-            if ($response->status() === 401 || $response->status() === 403) {
-                return [
-                    'success' => false,
-                    'message' => 'Authentication failed. Please check your read-write token.',
-                    'store_id' => $storeId,
-                    'details' => $details,
-                ];
-            }
-
-            // Other errors
-            $errorBody = $response->json();
-            $errorMessage = $errorBody['error']['message'] ?? 'Unknown error';
-
+        if (!preg_match('/^vercel_blob_rw_([A-Za-z0-9]+)_/', $token, $matches)) {
             return [
                 'success' => false,
-                'message' => 'Connection failed: ' . $errorMessage,
-                'store_id' => $storeId,
-                'details' => $details,
-            ];
-        } catch (\Exception $e) {
-            Log::error('Vercel Blob connection test failed', [
-                'exception' => $e->getMessage(),
-            ]);
-
-            return [
-                'success' => false,
-                'message' => 'Connection failed: ' . $e->getMessage(),
+                'message' => 'Invalid token format. Expected format: vercel_blob_rw_{storeId}_{secret}',
                 'store_id' => null,
                 'details' => [],
             ];
         }
+        $storeId = $matches[1];
+        try {
+            $response = app(TrustedStorageOriginPolicy::class)->client('https://vercel.com')
+                ->withHeaders(['authorization' => 'Bearer ' . $token, 'x-api-version' => '11'])
+                ->get('https://vercel.com/api/blob', ['limit' => 1]);
+        } catch (\Exception $e) {
+            Log::error('Vercel Blob connection test failed', ['exception_class' => get_class($e)]);
+            return ['success' => false, 'message' => 'Connection failed. Vercel Blob could not be reached.', 'store_id' => null, 'details' => []];
+        }
+        $details = ['status_code' => $response->status(), 'store_id' => $storeId];
+        if ($response->successful()) {
+            return [
+                'success' => true,
+                'message' => 'Connection successful. Store ID: ' . $storeId,
+                'store_id' => $storeId,
+                'details' => $details,
+            ];
+        }
+        if (in_array($response->status(), [401, 403], true)) {
+            return ['success' => false, 'message' => 'Authentication failed. Please check your read-write token.', 'store_id' => $storeId, 'details' => $details];
+        }
+        return ['success' => false, 'message' => 'Connection failed (HTTP ' . $response->status() . ').', 'store_id' => $storeId, 'details' => $details];
     }
 
     /**

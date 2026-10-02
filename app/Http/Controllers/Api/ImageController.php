@@ -11,7 +11,6 @@ use App\Services\Storage\StorageOperationService;
 use Illuminate\Validation\Rule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 
 class ImageController extends Controller {
@@ -138,6 +137,7 @@ class ImageController extends Controller {
         $op = $this->operations->uploadForReceipt($user, $receipt['operation_id'] ?? null);
         abort_unless(is_string($creds['service_key']) && trim($creds['service_key']) !== '',
             422, 'A Supabase service key is required for upload verification.');
+        $this->credentialService->preflight('supabase', $creds);
         // Browser completion is only a hint: verify the exact reserved object's provider metadata.
         $evidence = $this->operations->supabaseObjectInfo($op, $creds);
         if ($evidence['state'] !== 'present') {
@@ -376,15 +376,7 @@ class ImageController extends Controller {
             'observed_mime' => $mime, 'last_observed_at' => now()]);
 
         try {
-            $signResponse = Http::withHeaders([
-                'Content-Type' => 'application/json',
-                'apikey' => $creds['service_key'],
-                'Authorization' => 'Bearer ' . $creds['service_key']
-            ])->post(
-                rtrim($creds['url'], '/') . '/storage/v1/object/sign/' . rawurlencode($op->bucket) . '/'
-                    . StorageOperationService::encodePath($op->path),
-                ['expiresIn' => 604800] // 7 days
-            );
+            $signResponse = $this->signSupabase($creds, $op->bucket, $op->path);
             if (!$signResponse->successful()) {
                 throw new \RuntimeException('Supabase signing failed.');
             }
@@ -414,6 +406,18 @@ class ImageController extends Controller {
         abort_unless(($image->storage_credential_id || $image->storage_account_id) && $image->storage_bucket && $image->storage_path,
             422, 'A recorded Supabase account, bucket and path are required.');
         return $this->credentialService->resolveForImage(auth()->user(), $image);
+    }
+
+    /** POST /object/sign through the pinned trusted-origin client (7-day signed GET URL). */
+    private function signSupabase(array $creds, string $bucket, string $path)
+    {
+        $policy = app(\App\Services\Storage\TrustedStorageOriginPolicy::class);
+        $origin = $policy->supabaseOrigin($creds['url'] ?? null);
+        return $policy->client($origin)->withHeaders([
+            'apikey' => $creds['service_key'],
+            'Authorization' => 'Bearer ' . $creds['service_key'],
+        ])->post($origin . '/storage/v1/object/sign/' . rawurlencode($bucket) . '/'
+            . StorageOperationService::encodePath($path), ['expiresIn' => 604800]);
     }
 
     private function normalizeSupabaseSignedUrl($value, array $creds, string $bucket, string $path): string
@@ -462,15 +466,7 @@ class ImageController extends Controller {
             $path = $image->storage_path;
             $bucket = $image->storage_bucket;
 
-            $signResponse = Http::withHeaders([
-                'Content-Type' => 'application/json',
-                'apikey' => $creds['service_key'],
-                'Authorization' => 'Bearer ' . $creds['service_key']
-            ])->post(
-                rtrim($creds['url'], '/') . '/storage/v1/object/sign/' . rawurlencode($bucket) . '/'
-                    . implode('/', array_map('rawurlencode', explode('/', $path))),
-                ['expiresIn' => 604800] // 7 days
-            );
+            $signResponse = $this->signSupabase($creds, $bucket, $path);
 
             if (!$signResponse->successful()) {
                 throw new \RuntimeException('Supabase signing failed.');

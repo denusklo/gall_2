@@ -152,6 +152,10 @@ export const useStorageCredentialsStore = defineStore('storageCredentials', {
                     success: false,
                     message: error.response?.data?.message || 'Connection test failed'
                 };
+                // The server may have marked the credential unverified (e.g. 422); refresh the badge.
+                if (error.response) {
+                    try { await this.fetchCredentials(); } catch (refreshError) { /* keep the test error */ }
+                }
                 throw error;
             } finally {
                 this.testing[provider] = false;

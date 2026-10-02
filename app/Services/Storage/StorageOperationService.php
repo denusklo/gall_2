@@ -217,13 +217,35 @@ class StorageOperationService
         return ['apikey' => $creds['service_key'], 'Authorization' => 'Bearer ' . $creds['service_key']];
     }
 
+    /**
+     * [canonical origin, pinned client] for the account's Supabase project. Throws RuntimeException
+     * before any request when the stored URL is not a hosted project or resolves to a private address.
+     */
+    private function supabase(array $creds): array
+    {
+        $policy = app(TrustedStorageOriginPolicy::class);
+        $origin = $policy->supabaseOrigin($creds['url'] ?? null);
+        return [$origin, $policy->client($origin)->withHeaders($this->supabaseHeaders($creds))];
+    }
+
+    private function vercel(array $creds)
+    {
+        return app(TrustedStorageOriginPolicy::class)->client('https://vercel.com')
+            ->withHeaders(['authorization' => 'Bearer ' . $creds['token'], 'x-api-version' => '11']);
+    }
+
     /** Server-held bytes, reserved path, x-upsert:false. */
     public function supabaseServerUpload(StorageOperation $op, array $creds, string $bytes, string $mime): string
     {
         try {
-            $response = Http::withHeaders($this->supabaseHeaders($creds) + ['x-upsert' => 'false'])
+            [$origin, $client] = $this->supabase($creds);
+        } catch (RuntimeException $e) {
+            return 'upload_rejected'; // Nothing was sent.
+        }
+        try {
+            $response = $client->withHeaders(['x-upsert' => 'false'])->timeout(120)
                 ->withBody($bytes, $mime)
-                ->post(rtrim($creds['url'], '/') . '/storage/v1/object/' . rawurlencode($op->bucket) . '/' . self::encodePath($op->path));
+                ->post($origin . '/storage/v1/object/' . rawurlencode($op->bucket) . '/' . self::encodePath($op->path));
         } catch (ConnectionException $e) {
             return 'outcome_unknown';
         }
@@ -235,12 +257,12 @@ class StorageOperationService
     /** POST /object/upload/sign with x-upsert:false; returns the exact-path signed PUT URL. */
     public function supabaseSignedUploadUrl(StorageOperation $op, array $creds): ?string
     {
-        $base = rtrim($creds['url'], '/');
         $encoded = '/object/upload/sign/' . rawurlencode($op->bucket) . '/' . self::encodePath($op->path);
         try {
-            $response = Http::withHeaders($this->supabaseHeaders($creds) + ['x-upsert' => 'false'])
-                ->withoutRedirecting()->timeout(15)->withBody('{}', 'application/json')->post($base . '/storage/v1' . $encoded);
-        } catch (ConnectionException $e) {
+            [$base, $client] = $this->supabase($creds);
+            $response = $client->withHeaders(['x-upsert' => 'false'])
+                ->withBody('{}', 'application/json')->post($base . '/storage/v1' . $encoded);
+        } catch (ConnectionException | RuntimeException $e) {
             return null;
         }
         $value = $response->successful() ? $response->json('url') : null;
@@ -259,10 +281,10 @@ class StorageOperationService
     public function supabaseObjectInfo(StorageOperation $op, array $creds): array
     {
         try {
-            $response = Http::withHeaders($this->supabaseHeaders($creds))->withoutRedirecting()->timeout(15)
-                ->get(rtrim($creds['url'], '/') . '/storage/v1/object/info/authenticated/' . rawurlencode($op->bucket)
-                    . '/' . self::encodePath($op->path));
-        } catch (ConnectionException $e) {
+            [$origin, $client] = $this->supabase($creds);
+            $response = $client->get($origin . '/storage/v1/object/info/authenticated/' . rawurlencode($op->bucket)
+                . '/' . self::encodePath($op->path));
+        } catch (ConnectionException | RuntimeException $e) {
             return ['state' => 'unknown'];
         }
         $data = $response->json();
@@ -390,8 +412,8 @@ class StorageOperationService
     {
         try {
             if ($op->provider === 'supabase') {
-                $response = Http::withHeaders($this->supabaseHeaders($creds))
-                    ->delete(rtrim($creds['url'], '/') . '/storage/v1/object/' . rawurlencode($op->bucket), ['prefixes' => [$op->path]]);
+                [$origin, $client] = $this->supabase($creds);
+                $response = $client->delete($origin . '/storage/v1/object/' . rawurlencode($op->bucket), ['prefixes' => [$op->path]]);
                 if (in_array($response->status(), [401, 403], true)) return 'access_denied';
                 $deleted = $response->json();
                 return $response->successful() && is_array($deleted) && count($deleted) === 1
@@ -399,18 +421,19 @@ class StorageOperationService
             }
             $url = (string) $image->storage_url;
             app(UploadReceiptService::class)->assertVercelUrl($url, $op->path, $creds);
-            $headers = ['authorization' => 'Bearer ' . $creds['token'], 'x-api-version' => '11'];
-            $response = Http::withHeaders($headers + ['content-type' => 'application/json'])->withoutRedirecting()
-                ->timeout(15)->post('https://vercel.com/api/blob/delete', ['urls' => [$url]]);
+            $response = $this->vercel($creds)->withHeaders(['content-type' => 'application/json'])
+                ->post('https://vercel.com/api/blob/delete', ['urls' => [$url]]);
             if (in_array($response->status(), [401, 403], true)) return 'access_denied';
             if (!$response->successful()) return 'outcome_unknown';
             // Vercel delete returns no per-object proof: require list access, then typed not_found.
-            $list = Http::withHeaders($headers)->withoutRedirecting()->timeout(15)->get('https://vercel.com/api/blob', ['limit' => 1]);
+            $list = $this->vercel($creds)->get('https://vercel.com/api/blob', ['limit' => 1]);
             if (!$list->successful() || !is_array($list->json('blobs'))) return 'outcome_unknown';
-            $head = Http::withHeaders($headers)->withoutRedirecting()->timeout(15)->get('https://vercel.com/api/blob', ['url' => $url]);
+            $head = $this->vercel($creds)->get('https://vercel.com/api/blob', ['url' => $url]);
             return $head->status() === 404 && $head->json('error.code') === 'not_found' ? 'absent' : 'outcome_unknown';
         } catch (ConnectionException $e) {
             return 'outcome_unknown';
+        } catch (RuntimeException $e) {
+            return 'outcome_unknown'; // Endpoint rejected before any request; nothing was deleted.
         } catch (\Illuminate\Validation\ValidationException $e) {
             return 'needs_review';
         }

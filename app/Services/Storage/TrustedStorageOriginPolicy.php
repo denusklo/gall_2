@@ -36,6 +36,34 @@ class TrustedStorageOriginPolicy
         throw new RuntimeException('unsupported_provider');
     }
 
+    /** Canonical https://<ref>.supabase.co origin of a stored or submitted Supabase URL. */
+    public function supabaseOrigin($url): string
+    {
+        $host = $this->host($url);
+        if (!preg_match('/^[a-z0-9]{20}\.supabase\.co$/D', $host)) {
+            throw new RuntimeException('untrusted_account');
+        }
+        return 'https://' . $host;
+    }
+
+    /**
+     * HTTP client for one trusted origin: DNS resolved once and pinned to a public address, TLS
+     * verified, no redirects, no proxy. Throws before any request when the origin is not trusted.
+     */
+    public function client(string $origin): \Illuminate\Http\Client\PendingRequest
+    {
+        return \Illuminate\Support\Facades\Http::withOptions($this->transportOptions($origin) + ['connect_timeout' => 8])
+            ->withoutRedirecting()->timeout(15);
+    }
+
+    /** User-facing reason for a rejected endpoint; never includes the URL or provider text. */
+    public static function rejectionMessage(string $code): string
+    {
+        return in_array($code, ['dns_unavailable', 'secure_transport_unavailable'], true)
+            ? 'The storage endpoint could not be verified right now. Try again later.'
+            : 'Only hosted storage endpoints are supported: https://<project-ref>.supabase.co for Supabase, and the Vercel Blob store that matches the token.';
+    }
+
     private function host($origin): string
     {
         if (!is_string($origin) || preg_match('/[\s\\\\]/', $origin)) {
@@ -82,7 +110,7 @@ class TrustedStorageOriginPolicy
         $ranges = strlen($bytes) === 4
             ? ['0.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '192.0.0.0/24',
                 '192.0.2.0/24', '198.18.0.0/15', '198.51.100.0/24', '203.0.113.0/24', '224.0.0.0/3']
-            : ['::/96', '::ffff:0:0/96', '64:ff9b::/96', '100::/64', '2001::/23', '2002::/16', 'fc00::/7', 'fe80::/10', 'ff00::/8'];
+            : ['::/96', '::ffff:0:0/96', '64:ff9b::/96', '100::/64', '2001::/23', '2002::/16', 'fc00::/7', 'fe80::/10', 'fec0::/10', 'ff00::/8'];
         foreach ($ranges as $range) {
             [$network, $bits] = explode('/', $range);
             $base = inet_pton($network);

@@ -6,55 +6,29 @@ use App\Models\User;
 use App\Models\StorageCredential;
 use App\Models\StorageAccount;
 use App\Models\Image;
-use App\Models\UserSettings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
 class StorageCredentialService
 {
     /**
-     * Cache TTL in seconds (1 hour).
-     */
-    private const CACHE_TTL = 3600;
-
-    /**
-     * Get Supabase credentials for a user.
-     * Falls back to global config if user not configured.
+     * Get Supabase credentials for a user: the given owned credential, else the saved default.
+     * Without a saved credential the result has credential_id null and no secrets: the legacy
+     * per-user settings and the global env are NOT used here (see environmentCredentials()).
+     * Saved credentials must have a trusted hosted identity; anything else fails closed (422).
      *
-     * @param User $user
-     * @param int|null $credentialId Specific credential ID to use (optional)
-     * @return array{url: string, key: string, service_key: string, bucket: string, credential_id: int|null}
+     * @return array{url: ?string, key: ?string, service_key: ?string, bucket: ?string, credential_id: int|null}
      */
     public function getSupabaseCredentials(User $user, ?int $credentialId = null, bool $lockForUpdate = false): array
     {
-        // If specific credential ID is provided, use that
-        if ($credentialId !== null) {
-            $credential = StorageCredential::where('user_id', $user->id)
-                ->where('id', $credentialId)
-                ->where('provider', 'supabase')
-                ->when($lockForUpdate, fn ($query) => $query->lockForUpdate())
-                ->first();
-
-            if ($credential && $credential->supabase_url && $credential->supabase_key) {
-                return [
-                    'url' => $credential->supabase_url,
-                    'key' => $credential->supabase_key,
-                    'service_key' => $credential->supabase_service_key,
-                    'bucket' => $credential->supabase_bucket ?? 'images',
-                    'credential_id' => $credential->id,
-                ];
-            }
-
-            throw ValidationException::withMessages(['credential_id' => 'Supabase credential not found or incomplete.']);
-        }
-
-        // Try to get default Supabase credential
-        $credential = StorageCredential::where('user_id', $user->id)
-            ->where('provider', 'supabase')
-            ->where('is_default', true)
+        $credential = StorageCredential::where('user_id', $user->id)->where('provider', 'supabase')
+            ->when($credentialId !== null, fn ($query) => $query->where('id', $credentialId),
+                fn ($query) => $query->where('is_default', true))
+            ->when($lockForUpdate, fn ($query) => $query->lockForUpdate())
             ->first();
 
         if ($credential && $credential->supabase_url && $credential->supabase_key) {
+            $this->assertTrusted($credential);
             return [
                 'url' => $credential->supabase_url,
                 'key' => $credential->supabase_key,
@@ -63,71 +37,28 @@ class StorageCredentialService
                 'credential_id' => $credential->id,
             ];
         }
-
-        // Fall back to old UserSettings system (for backward compatibility)
-        $cacheKey = "supabase_creds_{$user->id}";
-
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($user) {
-            $settings = $user->settings;
-
-            if ($settings && $settings->hasSupabaseConfig()) {
-                return [
-                    'url' => $settings->supabase_url,
-                    'key' => $settings->supabase_key,
-                    'service_key' => $settings->supabase_service_key,
-                    'bucket' => $settings->supabase_bucket ?? 'images',
-                    'credential_id' => null,
-                ];
-            }
-
-            // Fallback to global config
-            return [
-                'url' => config('services.supabase.url'),
-                'key' => config('services.supabase.key'),
-                'service_key' => config('services.supabase.service_key'),
-                'bucket' => config('services.supabase.storage_bucket', 'gallery-uploads'),
-                'credential_id' => null,
-            ];
-        });
+        if ($credentialId !== null) {
+            throw ValidationException::withMessages(['credential_id' => 'Supabase credential not found or incomplete.']);
+        }
+        return ['url' => null, 'key' => null, 'service_key' => null, 'bucket' => null, 'credential_id' => null];
     }
 
     /**
-     * Get Vercel Blob credentials for a user.
-     * Falls back to global config if user not configured.
+     * Get Vercel Blob credentials for a user: the given owned credential, else the saved default.
+     * Same no-fallback and trusted-identity rules as getSupabaseCredentials().
      *
-     * @param User $user
-     * @param int|null $credentialId Specific credential ID to use (optional)
-     * @return array{token: string, store_url: string, api_url: string, credential_id: int|null}
+     * @return array{token: ?string, store_url: ?string, api_url: string, credential_id: int|null}
      */
     public function getVercelCredentials(User $user, ?int $credentialId = null, bool $lockForUpdate = false): array
     {
-        // If specific credential ID is provided, use that
-        if ($credentialId !== null) {
-            $credential = StorageCredential::where('user_id', $user->id)
-                ->where('id', $credentialId)
-                ->where('provider', 'vercel')
-                ->when($lockForUpdate, fn ($query) => $query->lockForUpdate())
-                ->first();
-
-            if ($credential && $credential->vercel_blob_token) {
-                return [
-                    'token' => $credential->vercel_blob_token,
-                    'store_url' => $credential->vercel_blob_store_url ?? 'https://blob.vercel-storage.com',
-                    'api_url' => 'https://vercel.com/api/blob',
-                    'credential_id' => $credential->id,
-                ];
-            }
-
-            throw ValidationException::withMessages(['credential_id' => 'Vercel credential not found or incomplete.']);
-        }
-
-        // Try to get default Vercel credential
-        $credential = StorageCredential::where('user_id', $user->id)
-            ->where('provider', 'vercel')
-            ->where('is_default', true)
+        $credential = StorageCredential::where('user_id', $user->id)->where('provider', 'vercel')
+            ->when($credentialId !== null, fn ($query) => $query->where('id', $credentialId),
+                fn ($query) => $query->where('is_default', true))
+            ->when($lockForUpdate, fn ($query) => $query->lockForUpdate())
             ->first();
 
         if ($credential && $credential->vercel_blob_token) {
+            $this->assertTrusted($credential);
             return [
                 'token' => $credential->vercel_blob_token,
                 'store_url' => $credential->vercel_blob_store_url ?? 'https://blob.vercel-storage.com',
@@ -135,30 +66,38 @@ class StorageCredentialService
                 'credential_id' => $credential->id,
             ];
         }
+        if ($credentialId !== null) {
+            throw ValidationException::withMessages(['credential_id' => 'Vercel credential not found or incomplete.']);
+        }
+        return ['token' => null, 'store_url' => null, 'api_url' => 'https://vercel.com/api/blob', 'credential_id' => null];
+    }
 
-        // Fall back to old UserSettings system (for backward compatibility)
-        $cacheKey = "vercel_creds_{$user->id}";
+    /** Saved credentials must resolve to a trusted hosted account (no request is made). */
+    private function assertTrusted(StorageCredential $credential): void
+    {
+        try {
+            app(TrustedStorageOriginPolicy::class)->identity($credential);
+        } catch (\Throwable $e) {
+            throw ValidationException::withMessages(['credential_id' => TrustedStorageOriginPolicy::rejectionMessage('untrusted_account')]);
+        }
+    }
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($user) {
-            $settings = $user->settings;
-
-            if ($settings && $settings->hasVercelConfig()) {
-                return [
-                    'token' => $settings->vercel_blob_token,
-                    'store_url' => $settings->vercel_blob_store_url ?? 'https://blob.vercel-storage.com',
-                    'api_url' => 'https://vercel.com/api/blob',
-                    'credential_id' => null,
-                ];
-            }
-
-            // Fallback to global config
-            return [
-                'token' => config('services.vercel.blob_read_write_token'),
-                'store_url' => config('services.vercel.blob_store_url', 'https://blob.vercel-storage.com'),
-                'api_url' => config('services.vercel.blob_api_url', 'https://vercel.com/api/blob'),
-                'credential_id' => null,
-            ];
-        });
+    /**
+     * Before any foreground provider request: Supabase endpoints must resolve to public addresses
+     * (DNS checked and pinned again on every request). Vercel uses the fixed API host. Fails with
+     * 422 (or 503 when DNS is unavailable) and zero outbound requests.
+     */
+    public function preflight(string $provider, array $creds): void
+    {
+        if ($provider !== 'supabase') return;
+        try {
+            $policy = app(TrustedStorageOriginPolicy::class);
+            $policy->transportOptions($policy->supabaseOrigin($creds['url'] ?? null));
+        } catch (\RuntimeException $e) {
+            $code = $e->getMessage();
+            abort(in_array($code, ['dns_unavailable', 'secure_transport_unavailable'], true) ? 503 : 422,
+                TrustedStorageOriginPolicy::rejectionMessage($code));
+        }
     }
 
     /**
@@ -226,11 +165,15 @@ class StorageCredentialService
         $creds = $provider === 'supabase'
             ? $this->getSupabaseCredentials($user, $credentialId === null ? null : (int) $credentialId)
             : $this->getVercelCredentials($user, $credentialId === null ? null : (int) $credentialId);
-        if (!empty($creds['credential_id'])) return $creds;
+        if (!empty($creds['credential_id'])) {
+            $this->preflight($provider, $creds);
+            return $creds;
+        }
         // Users with saved accounts keep the previous behavior: no silent switch to the shared store.
         abort_if(StorageCredential::where('user_id', $user->id)->exists(), 422, 'A saved storage account is required.');
         $environment = $this->environmentCredentials($provider);
         abort_unless($environment !== null, 422, 'A saved storage account or a configured default storage is required.');
+        $this->preflight($provider, $environment);
         return $environment;
     }
 
@@ -242,13 +185,16 @@ class StorageCredentialService
     {
         $provider = $image->storage_provider;
         if ($image->storage_credential_id) {
-            return $provider === 'supabase'
+            $creds = $provider === 'supabase'
                 ? $this->getSupabaseCredentials($user, $image->storage_credential_id)
                 : $this->getVercelCredentials($user, $image->storage_credential_id);
+        } else {
+            abort_unless($image->storage_account_id && $this->environmentMatchesAccount((int) $image->user_id, $provider,
+                (int) $image->storage_account_id), 422, 'A recorded storage account is required.');
+            $creds = $this->environmentCredentials($provider);
         }
-        abort_unless($image->storage_account_id && $this->environmentMatchesAccount((int) $image->user_id, $provider,
-            (int) $image->storage_account_id), 422, 'A recorded storage account is required.');
-        return $this->environmentCredentials($provider);
+        $this->preflight((string) $provider, $creds);
+        return $creds;
     }
 
     /** True when the environment store is the recorded account of this owner/provider. */
@@ -313,7 +259,7 @@ class StorageCredentialService
     }
 
     /**
-     * Clear cached credentials for a user.
+     * Remove credential arrays cached by older releases (they could hold keys). Nothing is cached now.
      *
      * @param User $user
      * @return void

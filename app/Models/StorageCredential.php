@@ -31,6 +31,19 @@ class StorageCredential extends Model
     ];
 
     /**
+     * Never serialize endpoint or secrets (toArray/toJson, relations, logs). API responses build
+     * their own masked fields explicitly.
+     *
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'supabase_url',
+        'supabase_key',
+        'supabase_service_key',
+        'vercel_blob_token',
+    ];
+
+    /**
      * The attributes that should be cast.
      *
      * @var array<string, string>
