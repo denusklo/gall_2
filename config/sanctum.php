@@ -50,38 +50,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Sanctum Middleware
+    | Sanctum Token Prefix
     |--------------------------------------------------------------------------
     |
-    | When authenticating your first-party SPA with Sanctum you may need to
-    | customize some of the middleware Sanctum uses while processing the
-    | request. You may change the middleware listed below as required.
-    |
-    */
-
-    'middleware' => [
-        'verify_csrf_token' => App\Http\Middleware\VerifyCsrfToken::class,
-        'encrypt_cookies' => App\Http\Middleware\EncryptCookies::class,
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Sanctum Token Prefix (added for Sanctum 3)
-    |--------------------------------------------------------------------------
     */
 
     'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
 
     /*
     |--------------------------------------------------------------------------
-    | Sanctum Middleware (added for Sanctum 3)
+    | Sanctum Middleware Overrides
     |--------------------------------------------------------------------------
+    |
+    | Sanctum 4 reads "validate_csrf_token" (falls back to "verify_csrf_token").
+    | The app's own middleware classes are used for CSRF and cookie encryption.
+    |
     */
 
     'middleware' => [
         'authenticate_session' => Laravel\Sanctum\Http\Middleware\AuthenticateSession::class,
         'encrypt_cookies' => App\Http\Middleware\EncryptCookies::class,
-        'verify_csrf_token' => App\Http\Middleware\VerifyCsrfToken::class,
+        'validate_csrf_token' => App\Http\Middleware\VerifyCsrfToken::class,
     ],
 
 ];
