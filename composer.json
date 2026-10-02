@@ -8,11 +8,10 @@
         "php": "^8.2",
         "guzzlehttp/guzzle": "^7.0.1",
         "kreait/laravel-firebase": "^6.0",
-        "laravel/framework": "^11.0",
+        "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.9",
         "laravel/ui": "^4.2",
-        "nesbot/carbon": "^2.72.6",
         "vlucas/phpdotenv": "^5.3"
     },
     "require-dev": {
@@ -21,7 +20,7 @@
         "laravel/sail": "^1.0.1",
         "mockery/mockery": "^1.4.2",
         "nunomaduro/collision": "^8.0",
-        "phpunit/phpunit": "^10.0",
+        "phpunit/phpunit": "^11.5",
         "spatie/laravel-ignition": "^2.0"
     },
     "autoload": {
