@@ -450,23 +450,8 @@ const FcmService = {
      * Handle notification click
      */
     handleNotificationClick(data) {
-        const type = data.type || '';
-
-        switch (type) {
-            case 'request_completed':
-            case 'new_completion':
-            case 'fully_completed':
-                // Redirect to my requests
-                window.location.href = '/requests/my';
-                break;
-            case 'completion_confirmation':
-                // Redirect to all requests
-                window.location.href = '/requests/all';
-                break;
-            default:
-                // Default to my requests
-                window.location.href = '/requests/my';
-        }
+        // The /requests pages were removed; every notification opens the image gallery.
+        window.location.href = '/images';
     },
 
     /**

@@ -49,23 +49,8 @@ self.addEventListener('notificationclick', function(event) {
     event.notification.close();
 
     const data = event.notification.data || {};
-    const type = data.type || '';
-
-    // Determine URL based on notification type
-    let url = '/requests/my';
-
-    switch (type) {
-        case 'request_completed':
-        case 'new_completion':
-        case 'fully_completed':
-            url = '/requests/my';
-            break;
-        case 'completion_confirmation':
-            url = '/requests/all';
-            break;
-        default:
-            url = '/requests/my';
-    }
+    // The /requests pages were removed; every notification opens the image gallery.
+    const url = '/images';
 
     // Open the app and navigate to the appropriate page
     event.waitUntil(
