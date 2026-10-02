@@ -181,10 +181,30 @@ class FcmController extends Controller
             'body' => 'nullable|string|max:500'
         ]);
 
-        // Only debug mode may target another user; otherwise always the caller's own uid.
-        $firebaseUid = config('app.debug')
-            ? $request->input('firebase_uid', $request->user()->firebase_uid)
-            : $request->user()->firebase_uid;
+        // Default target is the bearer caller. Targeting another user requires the
+        // caller (identified only by the authenticated bearer user) to hold the
+        // Firebase `admin` custom claim, verified against Firebase. Fails closed.
+        $callerUid = $request->user()?->firebase_uid;
+        if (!is_string($callerUid) || $callerUid === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authenticated user has no Firebase UID'
+            ], 403);
+        }
+
+        $requestedUid = $request->input('firebase_uid');
+        $firebaseUid = $callerUid;
+
+        if (is_string($requestedUid) && $requestedUid !== '' && $requestedUid !== $callerUid) {
+            if (!$this->callerIsFirebaseAdmin($callerUid)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Admin privileges required to send notifications to other users'
+                ], 403);
+            }
+            $firebaseUid = $requestedUid;
+        }
+
         $title = $request->input('title', 'Test Notification');
         $body = $request->input('body', 'This is a test notification from the admin panel');
 
@@ -284,5 +304,19 @@ class FcmController extends Controller
             'success' => false,
             'message' => 'Failed to send test notification'
         ], 500);
+    }
+
+    /**
+     * Authoritative admin check: Firebase customClaims.admin === true. Any failure denies.
+     */
+    protected function callerIsFirebaseAdmin(string $callerUid): bool
+    {
+        try {
+            $claims = app('firebase.auth')->getUser($callerUid)->customClaims ?? [];
+            return is_array($claims) && ($claims['admin'] ?? null) === true;
+        } catch (\Throwable $e) {
+            Log::warning('[TEST NOTIFICATION] Admin claim check failed', ['error' => $e->getMessage()]);
+            return false;
+        }
     }
 }

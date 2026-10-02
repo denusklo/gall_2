@@ -45,26 +45,36 @@ const NotificationService = {
     },
 
     setupEventListeners() {
-        // Toggle dropdown
+        // Open/close, outside-click, Escape, aria-expanded and mutual exclusion with
+        // the account menu are all owned by Bootstrap's dropdown plugin
+        // (#notificationBell carries data-toggle="dropdown"). No custom show-class handling.
         const bellButton = document.getElementById('notificationBell');
         const dropdown = document.getElementById('notificationDropdown');
+        const $ = window.jQuery;
 
-        if (bellButton && dropdown) {
-            bellButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                dropdown.classList.toggle('show');
+        if (bellButton && dropdown && $) {
+            $(bellButton.parentElement)
+                .on('show.bs.dropdown', () => this.fetchNotifications())
+                // Bootstrap closes a menu on any click inside it; keep the tray open only for
+                // real (native) clicks that started inside it. composedPath() is captured at
+                // dispatch, so it survives a re-render detaching the target. Synthetic clicks
+                // (Bootstrap's Escape handling triggers one on the menu) carry no native
+                // event and must not veto.
+                .on('hide.bs.dropdown', (e) => {
+                    const native = e.clickEvent && e.clickEvent.originalEvent;
+                    if (!native) return;
+                    const path = typeof native.composedPath === 'function' ? native.composedPath() : [];
+                    const inside = path.length ? path.includes(dropdown) : dropdown.contains(native.target);
+                    if (inside) e.preventDefault();
+                });
 
-                if (dropdown.classList.contains('show')) {
-                    this.fetchNotifications();
-                }
-            });
-
-            // Close dropdown when clicking outside
-            document.addEventListener('click', (e) => {
-                if (!bellButton.contains(e.target) && !dropdown.contains(e.target)) {
-                    dropdown.classList.remove('show');
-                }
+            // Escape while focus is on <body> (e.g. the focused control was re-rendered away)
+            // never reaches Bootstrap's handlers; close through the plugin and restore focus.
+            document.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape' || !dropdown.classList.contains('show')) return;
+                if (bellButton.parentElement.contains(document.activeElement)) return; // Bootstrap handles it
+                $(bellButton).dropdown('toggle'); // open -> Bootstrap clears menus (resets aria-expanded)
+                bellButton.focus();
             });
         }
 
@@ -211,6 +221,23 @@ const NotificationService = {
         const container = document.getElementById('notificationList');
         if (!container) return;
 
+        // Remember focus only if it was on a control inside the list (re-render detaches it).
+        const active = document.activeElement;
+        let focusIdx = -1;
+        if (active && container.contains(active)) {
+            const item = active.closest('.notification-item');
+            focusIdx = item ? Array.prototype.indexOf.call(container.children, item) : 0;
+        }
+        const restoreFocus = () => {
+            if (focusIdx < 0) return;
+            const items = container.querySelectorAll('.notification-item');
+            let target = items.length ? items[Math.min(focusIdx, items.length - 1)].querySelector('button') : null;
+            if (!target) target = document.getElementById('markAllAsRead');
+            const tray = document.getElementById('notificationDropdown');
+            if (!target || !tray || !tray.classList.contains('show')) target = document.getElementById('notificationBell');
+            if (target) target.focus();
+        };
+
         if (this.notifications.length === 0) {
             container.innerHTML = `
                 <div class="dropdown-item text-center text-muted py-3">
@@ -218,6 +245,7 @@ const NotificationService = {
                     <p class="mb-0 mt-2">No notifications</p>
                 </div>
             `;
+            restoreFocus();
             return;
         }
 
@@ -232,11 +260,9 @@ const NotificationService = {
             const btn = el('button', className);
             btn.type = 'button';
             btn.title = title;
+            btn.setAttribute('aria-label', title);
             btn.appendChild(el('i', iconClass));
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                onClick();
-            });
+            btn.addEventListener('click', () => onClick());
             return btn;
         };
 
@@ -283,6 +309,7 @@ const NotificationService = {
         });
 
         container.replaceChildren(fragment);
+        restoreFocus();
     },
 
     handleNotificationClick(id, type) {
