@@ -11,7 +11,7 @@
         "guzzlehttp/guzzle": "^7.0.1",
         "kreait/laravel-firebase": "^3.4",
         "laravel/framework": "^8.40",
-        "laravel/sanctum": "*",
+        "laravel/sanctum": "^2.15",
         "laravel/tinker": "^2.6",
         "laravel/ui": "^3.3",
         "lcobucci/jwt": "^4.1",
@@ -58,8 +58,11 @@
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
-        "sort-packages": true
+        "sort-packages": true,
+        "platform": {
+            "php": "8.2.28"
+        }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }
