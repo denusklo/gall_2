@@ -4,6 +4,7 @@ import { createPinia } from 'pinia';
 import GalleryView from './components/Gallery/GalleryView.vue';
 import axios from 'axios';
 import { registerAuthInterceptor } from './axiosInterceptors';
+import { refreshApiToken } from './apiTokenRefresh';
 
 
 // Set up Axios defaults
@@ -13,18 +14,10 @@ axios.defaults.headers.common['X-CSRF-TOKEN'] = document.querySelector('meta[nam
 // Create Pinia (the store)
 const pinia = createPinia();
 
-// Function to get API token for authenticated requests
+// Fetch the API token into memory (session-cookie auth); the axios request
+// interceptor attaches it to every request. Nothing is persisted.
 async function getApiToken() {
-    try {
-        const response = await axios.get('/apiv/_1/token');
-        const token = response.data.token;
-        localStorage.setItem('api_token', token);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        return token;
-    } catch (error) {
-        console.error('Failed to get API token:', error);
-        return null;
-    }
+    return refreshApiToken();
 }
 
 // Create the gallery detail app when the DOM is loaded
@@ -44,7 +37,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Try to get token before initializing app
         await getApiToken();
 
-        registerAuthInterceptor(['api_token']);
+        registerAuthInterceptor();
         const app = createApp(GalleryView, {
             galleryId: galleryId
         });
@@ -64,12 +57,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Add a function to check token on page load/refresh
 function setupTokenRefresh() {
-    // Check for existing token
-    const token = localStorage.getItem('api_token');
-    if (token) {
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    }
-
     // Track last refresh time
     let lastRefresh = Date.now();
     const REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes in milliseconds

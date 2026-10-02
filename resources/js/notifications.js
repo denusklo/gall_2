@@ -3,7 +3,7 @@
  * Standalone notification system for navbar
  */
 
-import { refreshSharedApiToken } from './apiTokenRefresh';
+import { getApiToken, refreshApiToken } from './apiTokenRefresh';
 
 const NotificationService = {
     notifications: [],
@@ -20,7 +20,7 @@ const NotificationService = {
     },
 
     async ensureValidToken() {
-        const token = localStorage.getItem('api_token');
+        const token = await getApiToken();
         if (!token) return;
 
         // Quick test to see if token is valid
@@ -41,7 +41,7 @@ const NotificationService = {
     },
 
     async refreshToken() {
-        return refreshSharedApiToken('api_token');
+        return refreshApiToken();
     },
 
     setupEventListeners() {
@@ -76,7 +76,7 @@ const NotificationService = {
     },
 
     async authenticatedFetch(url, options = {}) {
-        const token = localStorage.getItem('api_token');
+        const token = await getApiToken();
         const headers = {
             'Authorization': `Bearer ${token}`,
             'Accept': 'application/json',
@@ -338,10 +338,7 @@ const NotificationService = {
 // Initialize once the DOM is ready. If no token is stored yet (first visit),
 // fetch one through the shared refresh so the dropdown works without a reload.
 async function startNotifications() {
-    let token = localStorage.getItem('api_token');
-    if (!token) {
-        token = await refreshSharedApiToken('api_token');
-    }
+    const token = await getApiToken();
     if (!token) return;
 
     try {

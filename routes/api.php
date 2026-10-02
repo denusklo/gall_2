@@ -36,7 +36,7 @@ Route::prefix('_1')->group(function () {
 
     // Daily storage maintenance (Vercel Cron uses GET). Machine auth only: Bearer CRON_SECRET,
     // fails closed when the secret is not configured. Not under auth:sanctum or sessions.
-    Route::get('internal/storage-maintenance', StorageMaintenanceController::class)->middleware('storage.cron');
+    Route::get('internal/storage-maintenance', StorageMaintenanceController::class)->middleware(['throttle:10,1', 'storage.cron']);
     Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'user']);
 
     // Protected routes

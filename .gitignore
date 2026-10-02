@@ -67,3 +67,7 @@ Thumbs.db
 
 # Backups made by the harness
 *.bak
+
+# Firebase service-account keys
+*firebase-adminsdk*.json
+*service-account*.json

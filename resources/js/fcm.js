@@ -3,7 +3,7 @@
  * This file handles FCM notification permission and token registration
  */
 
-import { refreshSharedApiToken } from './apiTokenRefresh';
+import { getApiToken, refreshApiToken } from './apiTokenRefresh';
 
 // Firebase configuration - these should be loaded from environment
 const firebaseConfig = {
@@ -146,7 +146,7 @@ const FcmService = {
      * Refresh API token from server
      */
     async refreshApiToken() {
-        return refreshSharedApiToken(this.getApiKey());
+        return refreshApiToken();
     },
 
     /**
@@ -154,7 +154,7 @@ const FcmService = {
      */
     async testAuth() {
         try {
-            let apiToken = localStorage.getItem(this.getApiKey());
+            let apiToken = await getApiToken();
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
 
@@ -214,7 +214,7 @@ const FcmService = {
     async registerTokenWithServer(token) {
         try {
             // Get API token (should be fresh from testAuth)
-            const apiToken = localStorage.getItem(this.getApiKey());
+            const apiToken = await getApiToken();
 
             if (!apiToken) {
                 console.warn('[FCM] No API token found, skipping FCM registration');
@@ -350,7 +350,7 @@ const FcmService = {
                 }
             });
 
-            let response = await testAuth(localStorage.getItem(this.getApiKey()));
+            let response = await testAuth(await getApiToken());
 
             if (response.status === 401) {
                 const newToken = await this.refreshApiToken();
@@ -422,14 +422,6 @@ const FcmService = {
     },
 
     /**
-     * Get API key name for localStorage
-     */
-    getApiKey() {
-        // API token is stored with simple 'api_token' key
-        return 'api_token';
-    },
-
-    /**
      * Delete current token (for logout)
      */
     async deleteToken() {
@@ -444,10 +436,10 @@ const FcmService = {
     },
 
     /**
-     * Fetch API token from server if not in localStorage
+     * Get the in-memory API token, fetching it from the server (session cookie) if needed
      */
     async fetchApiToken() {
-        return refreshSharedApiToken(this.getApiKey());
+        return getApiToken();
     }
 };
 
@@ -479,13 +471,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
 
-    // Check if user is authenticated (API token in localStorage or get from server)
-    let apiToken = localStorage.getItem(FcmService.getApiKey());
-
-    // If no token in localStorage, try to fetch it from server
-    if (!apiToken) {
-        apiToken = await FcmService.fetchApiToken();
-    }
+    // Check if user is authenticated: the in-memory API token is fetched via the session cookie
+    const apiToken = await FcmService.fetchApiToken();
 
     if (apiToken) {
         // Delay initialization to ensure Firebase is ready
