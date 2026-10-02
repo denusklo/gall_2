@@ -37,7 +37,7 @@
                                         </form>
                                     </td>
                                     <td>
-                                        <form action="{{route('user.delete')}}" method="delete">
+                                        <form action="{{route('user.delete')}}" method="POST">
                                             @method('delete')
                                             {{ csrf_field() }}
                                             <input type="hidden" name='uid' value="{{$user->uid}}">

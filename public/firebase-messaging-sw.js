@@ -4,7 +4,7 @@
  */
 
 // First, load the config
-importScripts('/fcm-config.js?' + new Date().getTime());
+importScripts('/fcm-config.js');
 
 // Import Firebase scripts in service worker
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');

@@ -69,12 +69,20 @@ class UnifiedAuthMiddleware
                 session()->forget('idTokenString');
                 session()->forget('displayName');
 
-                return redirect()->route('unified.login.form')
+                if ($request->expectsJson()) {
+                    return response()->json(['error' => 'Unauthenticated.'], 401);
+                }
+
+                return redirect()->route('login')
                     ->with('error', 'Session expired. Please log in again.');
             } catch (\Exception $e) {
                 // Other errors
-                return redirect()->route('unified.login.form')
-                    ->with('error', 'Authentication failed: ' . $e->getMessage());
+                if ($request->expectsJson()) {
+                    return response()->json(['error' => 'Unauthenticated.'], 401);
+                }
+
+                return redirect()->route('login')
+                    ->with('error', 'Authentication failed. Please log in again.');
             }
         }
 
@@ -127,7 +135,11 @@ class UnifiedAuthMiddleware
         }
 
         // All authentication methods failed
-        return redirect()->route('unified.login.form')
+        if ($request->expectsJson()) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
+        return redirect()->route('login')
             ->with('error', 'Please log in to continue.');
     }
 
@@ -138,9 +150,9 @@ class UnifiedAuthMiddleware
     protected function authenticate($request)
     {
         if ($request->expectsJson()) {
-            throw new AuthenticationException('Unauthenticated.', [], route('unified.login.form'));
+            throw new AuthenticationException('Unauthenticated.', [], route('login'));
         }
 
-        return redirect()->route('unified.login.form');
+        return redirect()->route('login');
     }
 }

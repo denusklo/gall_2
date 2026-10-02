@@ -176,12 +176,15 @@ class FcmController extends Controller
     public function sendTestToUser(Request $request)
     {
         $request->validate([
-            'firebase_uid' => 'required|string',
+            'firebase_uid' => 'nullable|string',
             'title' => 'nullable|string|max:255',
             'body' => 'nullable|string|max:500'
         ]);
 
-        $firebaseUid = $request->input('firebase_uid');
+        // Only debug mode may target another user; otherwise always the caller's own uid.
+        $firebaseUid = config('app.debug')
+            ? $request->input('firebase_uid', $request->user()->firebase_uid)
+            : $request->user()->firebase_uid;
         $title = $request->input('title', 'Test Notification');
         $body = $request->input('body', 'This is a test notification from the admin panel');
 

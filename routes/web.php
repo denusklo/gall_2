@@ -3,10 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\HomeController;
-use App\Http\Controllers\UserController;
 use App\Http\Controllers\Firebase\FirebaseController;
-use App\Http\Controllers\Firebase\FirebaseAuthController;
 use App\Http\Controllers\Firebase\FirebaseUserController;
 use App\Http\Controllers\Firebase\FirebaseAdminController;
 use App\Http\Controllers\Auth\UnifiedAuthController;
@@ -52,24 +49,6 @@ Route::middleware(['auth'])->group(function () {
 
 Route::middleware(\App\Http\Middleware\UnifiedAuthMiddleware::class)->get('/apiv/_1/token', [AuthController::class, 'getToken']);
 
-Route::middleware(['guest'])->prefix('mysql')->as('mysql.')->group(function () {
-    Route::get('/register', [UserController::class, 'register'])->name('register');
-    Route::get('/login', [UserController::class, 'showLoginForm'])->name('login.form');
-    Route::post('/register', [UserController::class, 'create'])->name('register.store');
-    Route::post('/login', [UserController::class, 'login'])->name('login');
-});
-
-Route::middleware(['guest'])->prefix('firebase')->as('firebase.')->group(function () {
-    Route::get('/register', [FirebaseAuthController::class, 'register'])->name('create');
-    Route::post('/register', [FirebaseAuthController::class, 'store'])->name('register');
-    Route::get('/login', [FirebaseAuthController::class, 'showLoginForm'])->name('login.form');
-    Route::post('/login', [FirebaseAuthController::class, 'login'])->name('login');
-});
-
-Route::prefix('firebase')->as('firebase.')->group(function () {
-    Route::get('/logout', [FirebaseAuthController::class, 'logout'])->name('logout');
-});
-
 /*
 |--------------------------------------------------------------------------
 | Unified Authentication Routes (Default)
@@ -89,7 +68,7 @@ Route::middleware(['guest'])->group(function () {
     Route::post('/register', [UnifiedAuthController::class, 'register'])->name('register.post');
 });
 
-Route::get('/logout', [UnifiedAuthController::class, 'logout'])->name('logout');
+Route::post('/logout', [UnifiedAuthController::class, 'logout'])->name('logout');
 Route::get('/auth/status', [UnifiedAuthController::class, 'status'])->name('auth.status');
 
 // FCM Config endpoint for service worker
@@ -135,7 +114,7 @@ Route::middleware( ['firebase.auth'] )->group(function() {
 
     Route::match(['get', 'post'], 'user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
     Route::put('user/update', [FirebaseUserController::class, 'update'])->name('user.update');
-    Route::any('user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
+    Route::match(['post', 'delete'], 'user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
     Route::get('firebase', [FirebaseController::class, 'index']);
 
 });

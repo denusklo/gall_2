@@ -5,7 +5,7 @@
       <input 
         type="text" 
         v-model="filters.search" 
-        @input="updateFilters"
+        @input="onSearchInput"
         placeholder="Search by title or description" 
         class="search-input"
       />
@@ -70,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, defineEmits } from 'vue';
+import { ref, computed, watch, defineEmits, onBeforeUnmount } from 'vue';
 
 const emit = defineEmits(['update-filters']);
 
@@ -112,9 +112,20 @@ const formatSortBy = (sortBy) => {
   return formats[sortBy] || sortBy;
 };
 
+let searchTimer = null;
+
 const updateFilters = () => {
+  clearTimeout(searchTimer);
   emit('update-filters', { ...filters.value });
 };
+
+// Debounce typing so each keystroke doesn't trigger a fetch.
+const onSearchInput = () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(updateFilters, 300);
+};
+
+onBeforeUnmount(() => clearTimeout(searchTimer));
 
 const clearSearch = () => {
   filters.value.search = '';

@@ -50,3 +50,7 @@ docker-compose*.yml
 README.md
 CHANGELOG.md
 LICENSE
+
+# Firebase service-account keys
+*firebase-adminsdk*.json
+*service-account*.json

@@ -36,12 +36,18 @@ function operationError(error, action, fallback) {
   return failure;
 }
 
+// Non-reactive request bookkeeping.
+let fetchSeq = 0;
+let fetchAbort = null;
+let uploadSeq = 0;
+
 export const useImageStore = defineStore('image', {
   state: () => ({
     images: [],
-    loading: false,
+    fetchLoading: false,
+    activeUploads: 0,
+    uploadProgressById: {},
     error: null,
-    uploadProgress: 0,
     pagination: {
       currentPage: 1,
       totalItems: 0,
@@ -57,9 +63,45 @@ export const useImageStore = defineStore('image', {
     activeCategory: null
   }),
 
+  getters: {
+    // True while a list fetch or any upload is in flight.
+    loading: (state) => state.fetchLoading || state.activeUploads > 0,
+    // Average progress across in-flight uploads (0 when idle).
+    uploadProgress: (state) => {
+      const values = Object.values(state.uploadProgressById);
+      return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0;
+    }
+  },
+
   actions: {
+    beginUpload() {
+      const id = ++uploadSeq;
+      this.activeUploads++;
+      this.uploadProgressById = { ...this.uploadProgressById, [id]: 0 };
+      return id;
+    },
+
+    setUploadProgress(id, progressEvent) {
+      if (!progressEvent.total) return;
+      if (!(id in this.uploadProgressById)) return;
+      this.uploadProgressById = {
+        ...this.uploadProgressById,
+        [id]: Math.round((progressEvent.loaded * 100) / progressEvent.total)
+      };
+    },
+
+    endUpload(id) {
+      this.activeUploads = Math.max(0, this.activeUploads - 1);
+      const { [id]: _done, ...rest } = this.uploadProgressById;
+      this.uploadProgressById = rest;
+    },
+
     async fetchImages(page = 1, filters = {}) {
-      this.loading = true;
+      const requestId = ++fetchSeq;
+      fetchAbort?.abort();
+      const controller = new AbortController();
+      fetchAbort = controller;
+      this.fetchLoading = true;
       try {
         const params = {
           page,
@@ -69,7 +111,10 @@ export const useImageStore = defineStore('image', {
           category_id: filters.categoryId || this.activeCategory || ''
         };
 
-        const response = await axios.get('/apiv/_1/images', { params });
+        const response = await axios.get('/apiv/_1/images', { params, signal: controller.signal });
+
+        // A newer fetch has started; drop this stale response.
+        if (requestId !== fetchSeq) return;
 
         this.images = response.data.data;
         this.pagination.currentPage = response.data.current_page;
@@ -77,17 +122,17 @@ export const useImageStore = defineStore('image', {
         this.pagination.perPage = response.data.per_page;
         this.error = null;
       } catch (error) {
+        if (axios.isCancel(error) || requestId !== fetchSeq) return;
         this.error = error.response?.data?.message || 'Failed to fetch images';
         console.error('Error fetching images:', error);
       } finally {
-        this.loading = false;
+        if (requestId === fetchSeq) this.fetchLoading = false;
       }
     },
 
     // Original Supabase upload method
     async uploadFile(file, title, description = '', categoryIds = [], credentialId = null) {
-      this.loading = true;
-      this.uploadProgress = 0;
+      const uploadId = this.beginUpload();
 
       try {
         // Create form data for the backend upload
@@ -109,11 +154,7 @@ export const useImageStore = defineStore('image', {
           headers: {
             'Content-Type': 'multipart/form-data'
           },
-          onUploadProgress: (progressEvent) => {
-            this.uploadProgress = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-          }
+          onUploadProgress: (progressEvent) => this.setUploadProgress(uploadId, progressEvent)
         });
 
         // Add the new image to the list
@@ -127,15 +168,13 @@ export const useImageStore = defineStore('image', {
         this.error = failure.message;
         throw failure;
       } finally {
-        this.loading = false;
-        this.uploadProgress = 0;
+        this.endUpload(uploadId);
       }
     },
 
     // Vercel Blob upload method - Manual implementation (no SDK)
     async uploadFileToVercel(file, title, description = '', categoryIds = [], credentialId = null) {
-      this.loading = true;
-      this.uploadProgress = 0;
+      const uploadId = this.beginUpload();
 
       try {
         // Step 1: Get client upload token from our backend
@@ -166,12 +205,7 @@ export const useImageStore = defineStore('image', {
             'Authorization': `Bearer ${clientToken}`,
             'Content-Type': file.type,
           },
-          onUploadProgress: (progressEvent) => {
-            const progress = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            this.uploadProgress = progress;
-          }
+          onUploadProgress: (progressEvent) => this.setUploadProgress(uploadId, progressEvent)
         });
 
 
@@ -215,8 +249,7 @@ export const useImageStore = defineStore('image', {
         failure.operation = operation;
         throw failure;
       } finally {
-        this.loading = false;
-        this.uploadProgress = 0;
+        this.endUpload(uploadId);
       }
     },
 
@@ -229,18 +262,22 @@ export const useImageStore = defineStore('image', {
       }
 
       try {
-        // If it's a Vercel upload, delete from Vercel first
-        if (image.storage_provider === 'vercel') {
-          await axios.post('/apiv/_1/vercel/delete-blob', {
-            url: image.storage_url,
-            credential_id: image.storage_credential_id ?? null
-          });
-        }
-
-        // Then delete from database
+        // Delete the DB row first so a failure cannot orphan it pointing at a removed blob.
         await axios.delete(`/apiv/_1/images/${id}`);
 
-        // Only remove from local state if BOTH deletions succeeded
+        // Then remove the Vercel blob (best effort; the row is already gone).
+        if (image.storage_provider === 'vercel') {
+          try {
+            await axios.post('/apiv/_1/vercel/delete-blob', {
+              url: image.storage_url,
+              credential_id: image.storage_credential_id ?? null
+            });
+          } catch (blobError) {
+            console.error('[imageStore] Blob cleanup failed after DB delete:', blobError);
+          }
+        }
+
+        // DB deletion succeeded
         this.images = this.images.filter(img => img.id !== id);
         this.error = null;
       } catch (error) {

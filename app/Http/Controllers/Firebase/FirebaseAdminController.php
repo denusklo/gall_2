@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Firebase;
 
 use Illuminate\Http\Request;
 use Kreait\Firebase\Factory;
+use Kreait\Firebase\Exception\FirebaseException;
 use Illuminate\Routing\Controller;
 
 class FirebaseAdminController extends Controller

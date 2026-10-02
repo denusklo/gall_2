@@ -110,7 +110,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useImageStore } from '../../stores/image';
 import { useCategoryStore } from '../../stores/category';
 import { useStorageCredentialsStore } from '../../stores/storageCredentials';
@@ -149,12 +149,19 @@ onMounted(async () => {
   selectedCredentialId.value = def ? def.id : null;
 });
 
+const clearPreview = () => {
+    if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+    previewUrl.value = '';
+};
+
+onBeforeUnmount(clearPreview);
+
 const handleFileChange = (event) => {
+    clearPreview();
     const file = event.target.files[0];
 
     if (!file) {
         selectedFile.value = null;
-        previewUrl.value = '';
         return;
     }
 
@@ -163,7 +170,6 @@ const handleFileChange = (event) => {
     if (!allowedTypes.includes(file.type)) {
         uploadError.value = 'Invalid file type. Please select a JPG, PNG, GIF, or WEBP image.';
         selectedFile.value = null;
-        previewUrl.value = '';
         return;
     }
 
@@ -172,7 +178,6 @@ const handleFileChange = (event) => {
     if (file.size > maxSize) {
         uploadError.value = 'File size exceeds 50MB limit. Please select a smaller file.';
         selectedFile.value = null;
-        previewUrl.value = '';
         return;
     }
 
@@ -181,11 +186,7 @@ const handleFileChange = (event) => {
     selectedFile.value = file;
 
     // Create a preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        previewUrl.value = e.target.result;
-    };
-    reader.readAsDataURL(file);
+    previewUrl.value = URL.createObjectURL(file);
 
     // Auto-generate title from filename if title is empty
     if (!title.value) {
@@ -245,7 +246,7 @@ const uploadFile = async () => {
       description.value = '';
       categoryIds.value = [];
       selectedFile.value = null;
-      previewUrl.value = '';
+      clearPreview();
     }, 300);
   } catch (error) {
     uploadError.value = error.message || 'Failed to upload file. Please try again.';
