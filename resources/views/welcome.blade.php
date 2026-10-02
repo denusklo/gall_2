@@ -394,9 +394,26 @@
             }
         }
         
+        .landing-shell {
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 5.5rem 1rem 2rem;
+        }
+        .landing-nav { position: absolute; top: 0; right: 0; display: flex; gap: 1rem; flex-wrap: wrap; }
+        .landing-nav a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+        .landing-nav a:focus-visible { outline: 3px solid #2474b4; outline-offset: 3px; }
+        .landing-title { margin: 0; font-size: clamp(1.5rem, 5vw, 2rem); overflow-wrap: anywhere; }
+        @media (prefers-reduced-motion: reduce) {
+            .gradient-text { animation: none !important; }
+        }
+
         /* Gradient text effect */
         .gradient-text {
-            font-size: 2.5rem;
+            font-size: clamp(1.75rem, 6vw, 2.5rem);
             font-weight: bold;
             background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000);
             background-size: 400% 400%;
@@ -427,21 +444,20 @@
 </head>
 
 <body class="antialiased">
-    <div
-        class="relative flex items-top justify-center min-h-screen bg-gray-100 dark:bg-gray-900 sm:items-center py-4 sm:pt-0">
-        <div class="hidden fixed top-0 right-0 px-6 py-4 sm:block">
+    <main class="landing-shell relative bg-gray-100 dark:bg-gray-900">
+        <nav class="landing-nav px-6 py-4" aria-label="Account">
             @auth
-                <a href="{{ url('/home') }}" class="text-sm text-gray-700 underline">Home</a>
+                <a href="{{ url('/home') }}" class="text-sm text-gray-700 dark:text-white underline">Home</a>
             @else
-                <a href="{{ route('login') }}" class="text-sm text-gray-700 underline">Log in</a>
-                <a href="{{ route('register') }}" class="ml-4 text-sm text-gray-700 underline">Register</a>
+                <a href="{{ route('login') }}" class="text-sm text-gray-700 dark:text-white underline">Log in</a>
+                <a href="{{ route('register') }}" class="text-sm text-gray-700 dark:text-white underline">Register</a>
             @endauth
-        </div>
+        </nav>
 
         <div class="max-w-6xl mx-auto sm:px-6 lg:px-8">
-            <h1 class="text-center mb-6">My Gallery: <span class="gradient-text">Gall-2</span></h1>
+            <h1 class="landing-title text-center">My Gallery: <span class="gradient-text">Gall-2</span></h1>
         </div>
-    </div>
+    </main>
 </body>
 
 </html>
