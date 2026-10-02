@@ -77,11 +77,6 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('[Users Page] DOM loaded, setting up test notification buttons...');
 
-    // Get API token
-    const getApiToken = function() {
-        return localStorage.getItem('api_token');
-    };
-
     // Handle test notification button clicks
     const buttons = document.querySelectorAll('.test-notification-btn');
     console.log('[Users Page] Found ' + buttons.length + ' test notification buttons');
@@ -100,11 +95,16 @@ document.addEventListener('DOMContentLoaded', function() {
             this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
 
             try {
+                const token = await window.ApiToken.get();
+                if (!token) {
+                    throw new Error('Unable to authenticate the notification request. Please refresh the page and try again.');
+                }
+
                 const response = await fetch('/apiv/_1/fcm/test-user', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + getApiToken(),
+                        'Authorization': 'Bearer ' + token,
                         'Accept': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest'
                     },
@@ -169,12 +169,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (typeof iziToast !== 'undefined') {
                     iziToast.error({
                         title: 'Error',
-                        message: 'Failed to send test notification. Please try again.',
+                        message: error.message || 'Failed to send test notification. Please try again.',
                         position: 'topRight',
                         timeout: 5000
                     });
                 } else {
-                    alert('Error: Failed to send test notification');
+                    alert(error.message || 'Error: Failed to send test notification');
                 }
             } finally {
                 // Reset button state
