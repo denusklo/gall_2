@@ -7,7 +7,8 @@ use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
 use Kreait\Firebase\Auth as FirebaseAuth;
-use Firebase\Auth\Token\Exception\InvalidToken;
+use Kreait\Firebase\Exception\Auth\FailedToVerifyToken;
+use Kreait\Firebase\Exception\Auth\RevokedIdToken;
 
 class UnifiedAuthMiddleware
 {
@@ -63,7 +64,7 @@ class UnifiedAuthMiddleware
                 Auth::login($user);
 
                 return $next($request);
-            } catch (InvalidToken $e) {
+            } catch (FailedToVerifyToken | RevokedIdToken $e) {
                 // Token is invalid, clear session
                 session()->forget('verified_user_id');
                 session()->forget('idTokenString');
@@ -75,7 +76,7 @@ class UnifiedAuthMiddleware
 
                 return redirect()->route('login')
                     ->with('error', 'Session expired. Please log in again.');
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 // Other errors
                 if ($request->expectsJson()) {
                     return response()->json(['error' => 'Unauthenticated.'], 401);

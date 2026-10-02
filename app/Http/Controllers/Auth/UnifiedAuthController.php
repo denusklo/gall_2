@@ -85,7 +85,7 @@ class UnifiedAuthController extends Controller
 
                 return redirect()->intended('home')->with('success', 'Logged in successfully');
             }
-        } catch (\Kreait\Firebase\Auth\SignInFailed $e) {
+        } catch (\Kreait\Firebase\Exception\Auth\InvalidPassword | \Kreait\Firebase\Exception\Auth\EmailNotFound | \Kreait\Firebase\Exception\Auth\UserDisabled | \Kreait\Firebase\Exception\Auth\MissingPassword $e) {
             // Firebase sign in failed - try Laravel auth
             Log::info('Firebase sign in failed, trying Laravel auth', [
                 'email' => $email,
