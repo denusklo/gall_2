@@ -71,18 +71,25 @@ class StorageOperationService
     public function reserveUpload(User $user, string $provider, array $creds, string $bucket, string $filename,
         string $mime, int $size, array $metadata, int $ttlSeconds): StorageOperation
     {
-        abort_unless(!empty($creds['credential_id']), 422, 'A saved storage account is required.');
-        return DB::transaction(function () use ($user, $provider, $creds, $bucket, $filename, $mime, $size, $metadata, $ttlSeconds) {
+        $environment = empty($creds['credential_id']) && ($creds['environment'] ?? false) === true;
+        abort_unless(!empty($creds['credential_id']) || $environment, 422, 'A saved storage account is required.');
+        return DB::transaction(function () use ($user, $provider, $creds, $bucket, $filename, $mime, $size, $metadata, $ttlSeconds, $environment) {
             User::whereKey($user->id)->lockForUpdate()->firstOrFail();
             $pending = fn ($query) => $query->whereNotIn('state', self::PENDING_EXCLUDED);
             abort_if(StorageOperation::where('user_id', $user->id)->where($pending)->count()
                 >= (int) config('storage_maintenance.max_pending_per_owner', 100), 429, 'Too many pending storage operations.');
             abort_if(StorageOperation::where($pending)->count()
                 >= (int) config('storage_maintenance.max_pending_global', 1000), 429, 'Storage operation backlog is full.');
-            $credential = $this->ownedCredential($user, $creds['credential_id'], true);
-            abort_unless($credential->provider === $provider, 422, 'Storage provider does not match the account.');
+            if ($environment) {
+                // Shared default store: account identity derived from the environment credential.
+                $credential = app(StorageCredentialService::class)->environmentCredential($provider, $user->id);
+                abort_unless($credential !== null, 422, 'The default storage is not configured.');
+            } else {
+                $credential = $this->ownedCredential($user, $creds['credential_id'], true);
+                abort_unless($credential->provider === $provider, 422, 'Storage provider does not match the account.');
+            }
             try {
-                $account = $this->accounts->forCredential($credential);
+                $account = $environment ? $this->accounts->forEnvironment($credential) : $this->accounts->forCredential($credential);
             } catch (RuntimeException $e) {
                 abort(422, 'The storage account identity is invalid.');
             }
@@ -91,7 +98,7 @@ class StorageOperationService
             $hash = $this->objectHash($account, $bucket, $path);
             return StorageOperation::create([
                 'uuid' => $uuid, 'user_id' => $user->id, 'storage_account_id' => $account->id,
-                'storage_credential_id' => $credential->id, 'kind' => StorageOperation::UPLOAD, 'state' => 'reserved',
+                'storage_credential_id' => $environment ? null : $credential->id, 'kind' => StorageOperation::UPLOAD, 'state' => 'reserved',
                 'namespace' => $this->namespace(), 'provider' => $provider, 'bucket' => $bucket, 'path' => $path,
                 'object_hash' => $hash, 'upload_object_hash' => $hash, 'metadata' => $metadata,
                 'expected_size' => $size, 'expected_mime' => $mime,
@@ -277,8 +284,14 @@ class StorageOperationService
     private function sharedReference(Image $image, StorageAccount $account, string $objectHash): bool
     {
         $others = Image::where('storage_provider', $image->storage_provider)->where('storage_bucket', $image->storage_bucket)
-            ->where('storage_path', $image->storage_path)->whereKeyNot($image->id)->get(['id', 'storage_credential_id']);
+            ->where('storage_path', $image->storage_path)->whereKeyNot($image->id)->get(['id', 'storage_credential_id', 'storage_account_id']);
         foreach ($others as $other) {
+            if (!$other->storage_credential_id && $other->storage_account_id) {
+                // Account-bound reference (e.g. shared default store): compare recorded identities.
+                $recorded = StorageAccount::find($other->storage_account_id);
+                if (!$recorded || hash_equals($account->identity_hash, $recorded->identity_hash)) return true;
+                continue;
+            }
             $credential = $other->storage_credential_id ? StorageCredential::find($other->storage_credential_id) : null;
             // Unbound or unidentifiable live references may point at this object; do not guess.
             if (!$credential) return true;
@@ -311,11 +324,20 @@ class StorageOperationService
      */
     public function deleteImage(User $user, Image $image, array $creds): array
     {
-        $credential = $this->ownedCredential($user, $image->storage_credential_id);
-        try {
-            $account = $this->accounts->forCredential($credential);
-        } catch (RuntimeException $e) {
-            return [422, ['error' => 'The storage account identity is invalid.']];
+        $environment = !$image->storage_credential_id;
+        if ($environment) {
+            // Only the recorded account, and only while the environment store still is that account.
+            abort_unless($image->storage_account_id && app(StorageCredentialService::class)->environmentMatchesAccount(
+                (int) $user->id, $image->storage_provider, (int) $image->storage_account_id), 422, 'A recorded storage account is required.');
+            $account = StorageAccount::findOrFail($image->storage_account_id);
+            $credential = null;
+        } else {
+            $credential = $this->ownedCredential($user, $image->storage_credential_id);
+            try {
+                $account = $this->accounts->forCredential($credential);
+            } catch (RuntimeException $e) {
+                return [422, ['error' => 'The storage account identity is invalid.']];
+            }
         }
         if ($image->storage_account_id && (int) $image->storage_account_id !== $account->id) {
             return [409, ['error' => 'The saved account no longer points at this image\'s store.', 'retryable' => false]];
@@ -331,7 +353,7 @@ class StorageOperationService
                 $existing = StorageOperation::where('delete_image_id', $image->id)->lockForUpdate()->first();
                 return $existing ?: StorageOperation::create([
                     'uuid' => (string) Str::uuid(), 'user_id' => $user->id, 'storage_account_id' => $account->id,
-                    'storage_credential_id' => $credential->id, 'image_id' => $image->id, 'delete_image_id' => $image->id,
+                    'storage_credential_id' => $credential ? $credential->id : null, 'image_id' => $image->id, 'delete_image_id' => $image->id,
                     'kind' => StorageOperation::DELETE, 'state' => 'requested', 'namespace' => $this->namespace(),
                     'provider' => $image->storage_provider, 'bucket' => $image->storage_bucket, 'path' => $image->storage_path,
                     'object_hash' => $objectHash, 'metadata' => ['storage_url_host' => parse_url((string) $image->storage_url, PHP_URL_HOST)],
@@ -435,14 +457,17 @@ class StorageOperationService
             if (!$lease) return $result + ['action' => 'skipped_leased'];
         }
         try {
-            $credential = $op->storage_credential_id ? StorageCredential::find($op->storage_credential_id) : null;
+            // Saved credential, or the environment store when the op recorded no credential; either way
+            // it must still match the recorded account identity.
+            $credential = $op->storage_credential_id ? StorageCredential::find($op->storage_credential_id)
+                : app(StorageCredentialService::class)->environmentCredential((string) $op->provider, (int) $op->user_id);
             $account = StorageAccount::find($op->storage_account_id);
             if (!$credential || !$account || !$this->accounts->matches($credential, $account)) {
                 return $result + ['action' => 'blocked_account'];
             }
             $user = User::findOrFail($op->user_id);
             $observe = function () use ($inspection, $op, $credential, $requests, $seconds, &$result) {
-                $evidence = $inspection->exactObject($op->user_id, $credential->id, $op->bucket, $op->path,
+                $evidence = $inspection->exactObjectWith($op->user_id, $credential, $op->bucket, $op->path,
                     ['requests' => max(1, $requests), 'seconds' => max(1, $seconds)]);
                 $result['requests'] += $evidence['requests'];
                 return $evidence;

@@ -4,6 +4,9 @@ import axios from 'axios';
 export const useStorageCredentialsStore = defineStore('storageCredentials', {
     state: () => ({
         credentials: [],
+        // Provider of the shared default store configured on the server (header on the list
+        // response), or null. Only offered when the user has no saved accounts.
+        defaultStorageProvider: null,
         loading: false,
         error: null,
         testing: {
@@ -43,6 +46,12 @@ export const useStorageCredentialsStore = defineStore('storageCredentials', {
         },
         hasCredentials: (state) => {
             return state.credentials.length > 0;
+        },
+        // Choices for the upload selectors: saved accounts, or "Default storage" when none exist.
+        uploadTargets: (state) => {
+            if (state.credentials.length > 0 || !state.defaultStorageProvider) return state.credentials;
+            return [{ id: 'default', name: 'Default storage', provider: state.defaultStorageProvider,
+                is_default: true, isEnvironmentDefault: true }];
         }
     },
 
@@ -53,6 +62,8 @@ export const useStorageCredentialsStore = defineStore('storageCredentials', {
             try {
                 const response = await axios.get('/apiv/_1/storage-credentials');
                 this.credentials = response.data;
+                const provider = response.headers?.['x-default-storage-provider'];
+                this.defaultStorageProvider = provider === 'vercel' || provider === 'supabase' ? provider : null;
             } catch (error) {
                 console.error('Failed to fetch storage credentials:', error);
                 this.error = error.response?.data?.message || 'Failed to fetch credentials';

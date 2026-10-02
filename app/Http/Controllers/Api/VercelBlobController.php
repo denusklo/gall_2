@@ -144,7 +144,7 @@ class VercelBlobController extends Controller
             'category_ids.*' => [Rule::exists('categories', 'id')->where('user_id', auth()->id())],
             'credential_id' => 'nullable|integer|min:1',
         ]);
-        $creds = $this->credentialService->getVercelCredentials($request->user(), $request->input('credential_id'));
+        $creds = $this->credentialService->resolveForUpload($request->user(), 'vercel', $request->input('credential_id'));
 
         try {
             $readWriteToken = $creds['token'];
@@ -252,7 +252,13 @@ class VercelBlobController extends Controller
         ]);
         $user = $request->user();
         $receipt = $this->receipts->read($request->input('metadata.receipt'), $user, 'vercel');
-        $creds = $this->credentialService->getVercelCredentials($user, $receipt['credential_id']);
+        if (empty($receipt['credential_id'])) {
+            // Shared default store receipt: completion must resolve the same environment account.
+            $creds = $this->credentialService->environmentCredentials('vercel');
+            abort_unless($creds !== null, 422, 'A saved Vercel account is required.');
+        } else {
+            $creds = $this->credentialService->getVercelCredentials($user, $receipt['credential_id']);
+        }
         $this->receipts->assertAccount($receipt, $creds);
         $metadata = $receipt['metadata'];
         $this->receipts->matches(count($request->metadata) === count($metadata) + 1, 'metadata');

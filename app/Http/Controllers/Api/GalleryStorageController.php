@@ -44,8 +44,7 @@ class GalleryStorageController extends Controller
             'size' => 'required|integer|min:0|max:52428800', // 50MB max
             'credential_id' => 'nullable|integer|min:1',
         ]);
-        $creds = $this->credentialService->getSupabaseCredentials($request->user(), $request->input('credential_id'));
-        abort_unless(!empty($creds['credential_id']), 422, 'A saved Supabase account is required.');
+        $creds = $this->credentialService->resolveForUpload($request->user(), 'supabase', $request->input('credential_id'));
         abort_unless(is_string($creds['service_key']) && trim($creds['service_key']) !== '',
             422, 'A Supabase service key is required to issue upload URLs.');
 
@@ -143,7 +142,7 @@ class GalleryStorageController extends Controller
             $this->receipts->matches($id === null ? $image->storage_credential_id === null
                 : (int) $id === (int) $image->storage_credential_id, 'credential_id', 'Credential does not match image.');
         }
-        abort_unless($image->storage_credential_id && $image->storage_bucket && $image->storage_path,
+        abort_unless(($image->storage_credential_id || $image->storage_account_id) && $image->storage_bucket && $image->storage_path,
             422, 'A recorded Supabase account, bucket and path are required.');
         // Full durable delete: provider proof, then the image row, in one journaled intent.
         return app(ImageController::class)->deleteDurably($image);

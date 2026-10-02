@@ -114,8 +114,13 @@ class ImageController extends Controller {
 
         $user = $request->user();
         $receipt = $this->receipts->read($request->receipt, $user, 'supabase');
-        abort_unless(!empty($receipt['credential_id']), 422, 'A saved Supabase account is required.');
-        $creds = $this->credentialService->getSupabaseCredentials($user, $receipt['credential_id']);
+        if (empty($receipt['credential_id'])) {
+            // Shared default store receipt: completion must resolve the same environment account.
+            $creds = $this->credentialService->environmentCredentials('supabase');
+            abort_unless($creds !== null, 422, 'A saved Supabase account is required.');
+        } else {
+            $creds = $this->credentialService->getSupabaseCredentials($user, $receipt['credential_id']);
+        }
         $this->receipts->assertAccount($receipt, $creds);
         $url = rtrim($creds['url'], '/') . '/storage/v1/object/public/' . $receipt['bucket'] . '/' . $receipt['path'];
         $this->receipts->matches($request->storage_path === $receipt['path'], 'storage_path');
@@ -249,9 +254,9 @@ class ImageController extends Controller {
             abort_unless(is_string($creds['service_key']) && trim($creds['service_key']) !== '',
                 422, 'A Supabase service key is required for deletion.');
         } else {
-            abort_unless($image->storage_credential_id && $image->storage_path, 422,
+            abort_unless(($image->storage_credential_id || $image->storage_account_id) && $image->storage_path, 422,
                 'A recorded Vercel account and path are required.');
-            $creds = $this->credentialService->getVercelCredentials(auth()->user(), $image->storage_credential_id);
+            $creds = $this->credentialService->resolveForImage(auth()->user(), $image);
         }
         try {
             [$status, $body] = $this->operations->deleteImage(auth()->user(), $image, $creds);
@@ -342,8 +347,7 @@ class ImageController extends Controller {
             'category_ids.*' => [Rule::exists('categories', 'id')->where('user_id', auth()->id())],
             'credential_id' => 'nullable|integer|min:1',
         ]);
-        $creds = $this->credentialService->getSupabaseCredentials(auth()->user(), $request->input('credential_id'));
-        abort_unless(!empty($creds['credential_id']), 422, 'A saved Supabase account is required.');
+        $creds = $this->credentialService->resolveForUpload(auth()->user(), 'supabase', $request->input('credential_id'));
         abort_unless(is_string($creds['service_key']) && trim($creds['service_key']) !== '',
             422, 'A Supabase service key is required for uploads.');
 
@@ -404,12 +408,12 @@ class ImageController extends Controller {
         }
     }
 
-    /** Resolve only the recorded account; legacy unbound images need account mapping. */
+    /** Resolve only the recorded account (saved credential or matching shared default store). */
     private function supabaseCredsForImage(Image $image): array
     {
-        abort_unless($image->storage_credential_id && $image->storage_bucket && $image->storage_path,
+        abort_unless(($image->storage_credential_id || $image->storage_account_id) && $image->storage_bucket && $image->storage_path,
             422, 'A recorded Supabase account, bucket and path are required.');
-        return $this->credentialService->getSupabaseCredentials(auth()->user(), $image->storage_credential_id);
+        return $this->credentialService->resolveForImage(auth()->user(), $image);
     }
 
     private function normalizeSupabaseSignedUrl($value, array $creds, string $bucket, string $path): string

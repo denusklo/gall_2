@@ -76,7 +76,11 @@ class StorageCredentialController extends Controller
                 ];
             });
 
-        return response()->json($credentials);
+        $response = response()->json($credentials);
+        // Body stays the credential array. The header only names the provider of the configured
+        // shared default store (no URL, store id or key), so the UI can offer "Default storage".
+        $default = app(\App\Services\Storage\StorageCredentialService::class)->defaultUploadProvider();
+        return $default ? $response->header('X-Default-Storage-Provider', $default) : $response;
     }
 
     /**

@@ -73,6 +73,25 @@ class StorageAccountService
         return $account;
     }
 
+    /**
+     * Owner's account row for the environment store (unsaved credential model). Same identity rules
+     * as saved credentials; no credential link is written.
+     */
+    public function forEnvironment(StorageCredential $environment): StorageAccount
+    {
+        if ($environment->exists) throw new RuntimeException('environment_credential_expected');
+        $key = $this->identityKey($environment);
+        $attributes = ['user_id' => $environment->user_id, 'provider' => $environment->provider,
+            'identity_hash' => $this->identityHash($environment->provider, $key)];
+        $account = StorageAccount::where($attributes)->first();
+        if ($account) return $account;
+        try {
+            return StorageAccount::create($attributes + ['identity_key' => $key, 'trusted_hosted' => true]);
+        } catch (QueryException $e) {
+            return StorageAccount::where($attributes)->firstOrFail();
+        }
+    }
+
     /** True when the credential still points at the recorded account. */
     public function matches(StorageCredential $credential, StorageAccount $account): bool
     {

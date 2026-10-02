@@ -4,6 +4,8 @@ namespace App\Services\Storage;
 
 use App\Models\User;
 use App\Models\StorageCredential;
+use App\Models\StorageAccount;
+use App\Models\Image;
 use App\Models\UserSettings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
@@ -157,6 +159,105 @@ class StorageCredentialService
                 'credential_id' => null,
             ];
         });
+    }
+
+    /**
+     * Shared default store configured by the environment (services.* config only, never per-user
+     * settings). Returns null unless the identity is a trusted hosted account and the keys needed
+     * by the durable flow exist. Shape matches the saved-credential arrays with credential_id null.
+     */
+    public function environmentCredentials(string $provider): ?array
+    {
+        $model = $this->environmentCredential($provider, 0);
+        if (!$model) return null;
+        if ($provider === 'supabase') {
+            return ['url' => rtrim($model->supabase_url, '/'), 'key' => $model->supabase_key,
+                'service_key' => $model->supabase_service_key, 'bucket' => $model->supabase_bucket,
+                'credential_id' => null, 'environment' => true];
+        }
+        return ['token' => $model->vercel_blob_token, 'store_url' => $model->vercel_blob_store_url,
+            'api_url' => 'https://vercel.com/api/blob', 'credential_id' => null, 'environment' => true];
+    }
+
+    /** Unsaved credential model for the environment store, owned by $userId for identity checks. */
+    public function environmentCredential(string $provider, int $userId): ?StorageCredential
+    {
+        $credential = new StorageCredential();
+        if ($provider === 'supabase') {
+            $url = config('services.supabase.url');
+            $key = config('services.supabase.key');
+            $service = config('services.supabase.service_key');
+            if (!is_string($url) || $url === '' || !is_string($service) || $service === '') return null;
+            $credential->forceFill(['user_id' => $userId, 'provider' => 'supabase', 'supabase_url' => rtrim($url, '/'),
+                'supabase_key' => is_string($key) && $key !== '' ? $key : $service, 'supabase_service_key' => $service,
+                'supabase_bucket' => config('services.supabase.storage_bucket') ?: 'images']);
+        } elseif ($provider === 'vercel') {
+            $token = config('services.vercel.blob_read_write_token');
+            if (!is_string($token) || $token === '') return null;
+            $credential->forceFill(['user_id' => $userId, 'provider' => 'vercel', 'vercel_blob_token' => $token,
+                'vercel_blob_store_url' => config('services.vercel.blob_store_url') ?: 'https://blob.vercel-storage.com']);
+        } else {
+            return null;
+        }
+        try {
+            app(TrustedStorageOriginPolicy::class)->identity($credential);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        return $credential;
+    }
+
+    /** Provider of the environment store offered to users without saved accounts (Vercel first). */
+    public function defaultUploadProvider(): ?string
+    {
+        foreach (['vercel', 'supabase'] as $provider) {
+            if ($this->environmentCredential($provider, 0)) return $provider;
+        }
+        return null;
+    }
+
+    /**
+     * Upload target. Explicit IDs must be owned saved credentials (no fallback). Omitted ID uses the
+     * saved default; users with no saved accounts at all use the environment store. Never the legacy
+     * per-user settings.
+     */
+    public function resolveForUpload(User $user, string $provider, $credentialId): array
+    {
+        $creds = $provider === 'supabase'
+            ? $this->getSupabaseCredentials($user, $credentialId === null ? null : (int) $credentialId)
+            : $this->getVercelCredentials($user, $credentialId === null ? null : (int) $credentialId);
+        if (!empty($creds['credential_id'])) return $creds;
+        // Users with saved accounts keep the previous behavior: no silent switch to the shared store.
+        abort_if(StorageCredential::where('user_id', $user->id)->exists(), 422, 'A saved storage account is required.');
+        $environment = $this->environmentCredentials($provider);
+        abort_unless($environment !== null, 422, 'A saved storage account or a configured default storage is required.');
+        return $environment;
+    }
+
+    /**
+     * Credentials for a recorded image. Saved credential when recorded; otherwise the environment
+     * store only if the image's recorded account identity equals the environment identity.
+     */
+    public function resolveForImage(User $user, Image $image): array
+    {
+        $provider = $image->storage_provider;
+        if ($image->storage_credential_id) {
+            return $provider === 'supabase'
+                ? $this->getSupabaseCredentials($user, $image->storage_credential_id)
+                : $this->getVercelCredentials($user, $image->storage_credential_id);
+        }
+        abort_unless($image->storage_account_id && $this->environmentMatchesAccount((int) $image->user_id, $provider,
+            (int) $image->storage_account_id), 422, 'A recorded storage account is required.');
+        return $this->environmentCredentials($provider);
+    }
+
+    /** True when the environment store is the recorded account of this owner/provider. */
+    public function environmentMatchesAccount(int $owner, ?string $provider, int $accountId): bool
+    {
+        $account = StorageAccount::find($accountId);
+        $credential = $provider ? $this->environmentCredential($provider, $owner) : null;
+        return $account && $credential && (int) $account->user_id === $owner && $account->provider === $provider
+            && app(StorageAccountService::class)->matches($credential, $account);
     }
 
     /**

@@ -154,9 +154,22 @@ class StorageInspectionService
      */
     public function exactObject($owner, $credential, string $bucket, string $path, array $limits = []): array
     {
-        $this->owner = $this->positiveId($owner);
-        $saved = StorageCredential::where('user_id', $this->owner)->find($this->positiveId($credential));
+        $owner = $this->positiveId($owner);
+        $saved = StorageCredential::where('user_id', $owner)->find($this->positiveId($credential));
         if (!$saved) throw new RuntimeException('invalid_owned_scope');
+        return $this->exactObjectWith($owner, $saved, $bucket, $path, $limits);
+    }
+
+    /**
+     * Same as exactObject() for an already-resolved credential: an owned saved credential or the
+     * unsaved environment-store credential (shared default store). Read-only, pinned transport.
+     */
+    public function exactObjectWith($owner, StorageCredential $saved, string $bucket, string $path, array $limits = []): array
+    {
+        $this->owner = $this->positiveId($owner);
+        if ((int) $saved->user_id !== $this->owner) {
+            throw new RuntimeException('invalid_owned_scope');
+        }
         $this->credential = $saved;
         try {
             $this->account = $this->policy->identity($saved);

@@ -164,7 +164,7 @@ const categories = computed(() => categoryStore.categories);
 const defaultCategoryIds = ref([]);
 
 // Storage credential selection (provider is derived from the chosen credential)
-const credentials = computed(() => credentialsStore.credentials);
+const credentials = computed(() => credentialsStore.uploadTargets);
 const selectedCredentialId = ref(null);
 const selectedCredential = computed(
     () => credentials.value.find(c => c.id === selectedCredentialId.value) || null
@@ -285,6 +285,8 @@ const startUpload = async () => {
     }
 
     const credential = selectedCredential.value;
+    // "Default storage" sends no credential id; the server uses its configured shared store.
+    const credentialId = credential.isEnvironmentDefault ? null : credential.id;
     isUploading.value = true;
     uploadError.value = '';
     uploadedCount.value = 0;
@@ -302,9 +304,9 @@ const startUpload = async () => {
         try {
             // Route by the chosen credential's provider, passing its id
             if (credential.provider === 'vercel') {
-                await uploadFileVercel(file, title, i, credential.id);
+                await uploadFileVercel(file, title, i, credentialId);
             } else {
-                await uploadFileSupabase(file, title, i, credential.id);
+                await uploadFileSupabase(file, title, i, credentialId);
             }
 
             fileProgress.value[i] = 100;
