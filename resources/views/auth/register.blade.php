@@ -5,7 +5,7 @@
 @php
     if (!empty(session()->get('verified_user_id'))) {
         session()->flash('success', "You are already logged in");
-        header('location: ' . route('user.home'));
+        header('location: ' . route('home'));
     }
 @endphp
 
