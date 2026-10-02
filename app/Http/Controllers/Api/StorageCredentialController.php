@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use App\Services\CredentialNameService;
 use App\Services\UserSettingsService;
+use App\Services\Storage\TrustedStorageOriginPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -132,6 +133,10 @@ class StorageCredentialController extends Controller
             $credential->vercel_blob_store_url = $request->vercel_blob_store_url ?? 'https://blob.vercel-storage.com';
         }
 
+        if ($errors = $this->endpointErrors($credential)) {
+            return response()->json(['errors' => $errors], 422);
+        }
+
         $credential->save();
 
         // Handle default credential
@@ -226,6 +231,12 @@ class StorageCredentialController extends Controller
             'vercel_blob_token',
             'vercel_blob_store_url',
         ]));
+
+        // Endpoint changes are validated before anything is saved or contacted.
+        if ($credential->isDirty(['supabase_url', 'vercel_blob_token', 'vercel_blob_store_url'])
+            && ($errors = $this->endpointErrors($credential))) {
+            return response()->json(['errors' => $errors], 422);
+        }
 
         // Mark as unverified if credentials changed
         if ($credential->isDirty([
@@ -334,6 +345,13 @@ class StorageCredentialController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        $candidate = new StorageCredential();
+        $candidate->forceFill(['provider' => 'supabase', 'supabase_url' => $request->url]);
+        if ($errors = $this->endpointErrors($candidate)) {
+            return response()->json(['success' => false, 'message' => $errors['supabase_url'][0],
+                'errors' => ['url' => $errors['supabase_url']]], 422);
+        }
+
         $result = $this->settingsService->testSupabaseConnection(
             $request->url,
             $request->key,
@@ -359,6 +377,13 @@ class StorageCredentialController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        $candidate = new StorageCredential();
+        $candidate->forceFill(['provider' => 'vercel', 'vercel_blob_token' => $request->token]);
+        if ($errors = $this->endpointErrors($candidate)) {
+            return response()->json(['success' => false, 'message' => array_values($errors)[0][0],
+                'errors' => ['token' => array_values($errors)[0]]], 422);
+        }
+
         $result = $this->settingsService->testVercelBlobConnection($request->token);
 
         return response()->json($result);
@@ -377,6 +402,12 @@ class StorageCredentialController extends Controller
             ->storageCredentials()
             ->where('id', $id)
             ->firstOrFail();
+
+        if ($errors = $this->endpointErrors($credential)) {
+            $credential->markAsUnverified();
+            return response()->json(['success' => false, 'message' => array_values($errors)[0][0],
+                'errors' => $errors, 'is_verified' => false], 422);
+        }
 
         if ($credential->provider === 'supabase') {
             $result = $this->settingsService->testSupabaseConnection(
@@ -400,6 +431,28 @@ class StorageCredentialController extends Controller
             'is_verified' => $credential->is_verified,
             'verified_at' => $credential->verified_at?->toIso8601String(),
         ]));
+    }
+
+    /**
+     * Hosted endpoints only, checked before any save or outbound request: Supabase must be
+     * https://<project-ref>.supabase.co resolving to public addresses; Vercel tokens must carry a
+     * store id, and any store URL must be that store (or the generic placeholder).
+     */
+    private function endpointErrors(StorageCredential $candidate): ?array
+    {
+        $policy = app(TrustedStorageOriginPolicy::class);
+        try {
+            $policy->identity($candidate);
+            if ($candidate->provider === 'supabase') {
+                $policy->transportOptions($policy->supabaseOrigin($candidate->supabase_url));
+            }
+        } catch (\RuntimeException $e) {
+            $field = $candidate->provider === 'supabase' ? 'supabase_url'
+                : (preg_match('/^vercel_blob_rw_[A-Za-z0-9]+_[A-Za-z0-9_-]+$/D', (string) $candidate->vercel_blob_token)
+                    ? 'vercel_blob_store_url' : 'vercel_blob_token');
+            return [$field => [TrustedStorageOriginPolicy::rejectionMessage($e->getMessage())]];
+        }
+        return null;
     }
 
     /**

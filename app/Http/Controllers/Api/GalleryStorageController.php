@@ -85,32 +85,30 @@ class GalleryStorageController extends Controller
      */
     public function checkBucket()
     {
-        try {
-            $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
-            $bucket = $creds['bucket'];
+        // Saved account only (no legacy settings or shared-store fallback), trusted endpoint only.
+        $creds = $this->credentialService->getSupabaseCredentials(auth()->user());
+        abort_unless(!empty($creds['credential_id']), 422, 'A saved Supabase account is required.');
+        $this->credentialService->preflight('supabase', $creds);
+        $bucket = $creds['bucket'];
 
-            $response = Http::withHeaders([
+        try {
+            $policy = app(\App\Services\Storage\TrustedStorageOriginPolicy::class);
+            $origin = $policy->supabaseOrigin($creds['url']);
+            $response = $policy->client($origin)->withHeaders([
                 'apikey' => $creds['key'],
                 'Authorization' => 'Bearer ' . $creds['key'],
-            ])->get("{$creds['url']}/storage/v1/bucket/{$bucket}");
-
-            if ($response->successful()) {
-                return response()->json([
-                    'exists' => true,
-                    'bucket' => $response->json()
-                ]);
-            } else {
-                return response()->json([
-                    'exists' => false,
-                    'error' => $response->json()['message'] ?? 'Bucket not found'
-                ]);
-            }
+            ])->get($origin . '/storage/v1/bucket/' . rawurlencode($bucket));
         } catch (\Exception $e) {
-            Log::error('Error checking bucket: ' . $e->getMessage(), [
-                'exception' => $e,
-            ]);
-            return response()->json(['error' => 'Failed to check bucket: ' . $e->getMessage()], 500);
+            Log::error('Error checking bucket', ['exception_class' => get_class($e)]);
+            return response()->json(['error' => 'Failed to check bucket.'], 502);
         }
+        $data = $response->json();
+        if ($response->successful() && is_array($data)) {
+            // Only bucket identity fields, never the raw provider body.
+            return response()->json(['exists' => true,
+                'bucket' => array_intersect_key($data, array_flip(['id', 'name', 'public']))]);
+        }
+        return response()->json(['exists' => false, 'error' => 'Bucket not found or not accessible.']);
     }
 
     /**

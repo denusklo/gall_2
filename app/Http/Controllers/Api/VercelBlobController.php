@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Image;
 use App\Services\Storage\StorageCredentialService;
 use App\Services\Storage\UploadReceiptService;
+use App\Services\Storage\TrustedStorageOriginPolicy;
 use App\Services\Storage\StorageOperationService;
 use Illuminate\Validation\Rule;
 use Illuminate\Http\Client\ConnectionException;
@@ -28,100 +29,6 @@ class VercelBlobController extends Controller
         $this->credentialService = $credentialService;
         $this->receipts = $receipts;
         $this->operations = $operations;
-    }
-
-    /**
-     * ALTERNATIVE APPROACH: Direct server-side upload to Vercel Blob
-     * Instead of client token, we upload from the server
-     * This is simpler and more reliable for Laravel backends
-     *
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function uploadToVercel(Request $request)
-    {
-        $request->validate([
-            'file' => 'required|file|max:51200|mimes:jpeg,png,gif,webp', // 50MB max
-            'title' => 'required|string',
-            'description' => 'nullable|string',
-            'category_ids' => 'nullable|array',
-            'category_ids.*' => 'exists:categories,id',
-        ]);
-
-        try {
-            $file = $request->file('file');
-            $creds = $this->credentialService->getVercelCredentials($request->user());
-
-            if (empty($creds['token'])) {
-                throw new \Exception('Vercel Blob read-write token is not configured');
-            }
-
-            // Generate pathname
-            $originalFilename = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-            $extension = $file->getClientOriginalExtension();
-            $cleanFilename = Str::slug($originalFilename);
-            if (empty($cleanFilename)) {
-                $cleanFilename = 'file';
-            }
-            $pathname = date('Y/m/d') . '/' . $cleanFilename . '-' . Str::random(8) . '.' . $extension;
-
-            // Upload directly to Vercel Blob using server-side PUT
-            $uploadUrl = $creds['store_url'] . "/{$pathname}";
-
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $creds['token'],
-                'x-content-type' => $file->getMimeType(),
-            ])->attach(
-                'file',
-                file_get_contents($file->getRealPath()),
-                $file->getClientOriginalName()
-            )->put($uploadUrl);
-
-            if (!$response->successful()) {
-                Log::error('Vercel Blob upload failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                throw new \Exception('Upload to Vercel failed: ' . $response->body());
-            }
-
-            $blob = $response->json();
-
-            // Create image entry
-            $image = Image::create([
-                'title' => $request->title,
-                'description' => $request->description,
-                'storage_path' => $blob['pathname'] ?? $pathname,
-                'storage_bucket' => 'vercel-blob',
-                'storage_url' => $blob['url'],
-                'filename' => basename($pathname),
-                'mime_type' => $file->getMimeType(),
-                'size' => $file->getSize(),
-                'user_id' => auth()->id(),
-                'storage_provider' => Image::STORAGE_VERCEL,
-            ]);
-
-            // Attach categories if provided
-            if ($request->has('category_ids') && is_array($request->category_ids)) {
-                $image->categories()->attach($request->category_ids);
-            }
-
-            $image->load(['categories', 'user']);
-
-            return response()->json([
-                'success' => true,
-                'image' => $image,
-            ], 201);
-        } catch (\Exception $e) {
-            Log::error('Error uploading to Vercel: ' . $e->getMessage(), [
-                'exception' => $e,
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json([
-                'error' => 'Failed to upload to Vercel',
-                'message' => $e->getMessage()
-            ], 500);
-        }
     }
 
     /**
@@ -220,11 +127,9 @@ class VercelBlobController extends Controller
         } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('Error generating Vercel client token: ' . $e->getMessage(), [
-                'exception' => $e,
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Failed to generate upload token: ' . $e->getMessage()], 500);
+            // Exception class only: messages and trace arguments can contain the RW token.
+            Log::error('Error generating Vercel client token', ['exception_class' => get_class($e)]);
+            return response()->json(['error' => 'Failed to generate upload token.'], 500);
         }
     }
 
@@ -275,11 +180,11 @@ class VercelBlobController extends Controller
         // @vercel/blob 1.0.2 head(): authenticated GET to the API with a URL query parameter.
         // Browser completion is a hint; provider metadata decides. No locks held during HTTP.
         try {
-            $response = Http::withHeaders([
+            $response = app(TrustedStorageOriginPolicy::class)->client('https://vercel.com')->withHeaders([
                 'authorization' => 'Bearer ' . $creds['token'],
                 'x-api-version' => '11',
-            ])->withoutRedirecting()->timeout(15)->get('https://vercel.com/api/blob', ['url' => $blob['url']]);
-        } catch (ConnectionException $e) {
+            ])->get('https://vercel.com/api/blob', ['url' => $blob['url']]);
+        } catch (ConnectionException | \RuntimeException $e) {
             $this->operations->recordFailure($op, 'verification_unknown');
             abort(502, 'Unable to verify uploaded blob.');
         }
@@ -362,28 +267,34 @@ class VercelBlobController extends Controller
      */
     public function listBlobs(Request $request)
     {
+        $request->validate([
+            'limit' => 'nullable|integer|min:1|max:100',
+            'cursor' => 'nullable|string|max:512',
+        ]);
+        // Saved account only: the shared default store holds every user's files and is never listed.
+        $creds = $this->credentialService->getVercelCredentials($request->user());
+        abort_unless(!empty($creds['credential_id']), 422, 'A saved Vercel account is required.');
+
         try {
-            $creds = $this->credentialService->getVercelCredentials($request->user());
-
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $creds['token'],
-            ])->get($creds['store_url'] . '/list', [
-                'limit' => $request->get('limit', 100),
-                'cursor' => $request->get('cursor'),
-            ]);
-
-            if ($response->successful()) {
-                return response()->json($response->json());
-            } else {
-                return response()->json([
-                    'error' => 'Failed to list blobs'
-                ], $response->status());
-            }
-        } catch (\Exception $e) {
-            Log::error('Error listing Vercel blobs: ' . $e->getMessage(), [
-                'exception' => $e,
-            ]);
-            return response()->json(['error' => 'Failed to list files'], 500);
+            $query = ['limit' => (int) $request->input('limit', 100)];
+            if ($request->filled('cursor')) $query['cursor'] = $request->input('cursor');
+            // Installed @vercel/blob list() contract: fixed API host, pinned transport.
+            $response = app(TrustedStorageOriginPolicy::class)->client('https://vercel.com')->withHeaders([
+                'authorization' => 'Bearer ' . $creds['token'],
+                'x-api-version' => '11',
+            ])->get('https://vercel.com/api/blob', $query);
+        } catch (ConnectionException | \RuntimeException $e) {
+            Log::error('Error listing Vercel blobs', ['exception_class' => get_class($e)]);
+            return response()->json(['error' => 'Failed to list files'], 502);
         }
+        $data = $response->json();
+        if (!$response->successful() || !is_array($data['blobs'] ?? null)) {
+            return response()->json(['error' => 'Failed to list blobs'], 502);
+        }
+        // Return only blob metadata fields, never the raw provider body.
+        $blobs = array_map(fn ($b) => array_intersect_key(is_array($b) ? $b : [],
+            array_flip(['url', 'pathname', 'size', 'uploadedAt', 'contentType'])), $data['blobs']);
+        return response()->json(['blobs' => array_values($blobs), 'hasMore' => ($data['hasMore'] ?? false) === true,
+            'cursor' => is_string($data['cursor'] ?? null) ? $data['cursor'] : null]);
     }
 }
