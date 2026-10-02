@@ -232,6 +232,9 @@ async function handleSave() {
 .btn { min-height: 2.625rem; white-space: nowrap; }
 button:disabled { cursor: not-allowed; }
 button:focus-visible, input:focus-visible { outline: 3px solid #2474b4; outline-offset: 3px; box-shadow: none; }
+.secret-input:focus-within { outline: 3px solid #2474b4; outline-offset: 3px; border-radius: .25rem; }
+.secret-input .form-control:focus, .secret-input .form-control:focus-visible, .secret-toggle:focus, .secret-toggle:focus-visible { outline: 0; box-shadow: none; }
+.secret-toggle:focus-visible { background: #e7edf3; text-decoration: underline; }
 .provider-option:focus-within { outline: 3px solid #2474b4; outline-offset: 3px; }
 @media (max-width: 575px) {
   .account-dialog { width: calc(100% - 1rem); max-height: calc(100vh - 1rem); max-height: calc(100dvh - 1rem); }

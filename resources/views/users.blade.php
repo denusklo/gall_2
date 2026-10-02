@@ -65,7 +65,7 @@
         <div class="col-md-3">
             <div class="card">
                 <div class="card-body">
-                    There are total {{$totalRequests}} request/s.
+                    There are total {{ $totalRequests }} {{ (int) $totalRequests === 1 ? 'request' : 'requests' }}.
                 </div>
             </div>
         </div>
