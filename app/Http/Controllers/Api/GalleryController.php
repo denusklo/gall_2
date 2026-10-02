@@ -8,6 +8,7 @@ use App\Models\Image;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class GalleryController extends Controller {
 
@@ -65,7 +66,7 @@ class GalleryController extends Controller {
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'cover_image_id' => 'nullable|exists:images,id',
+            'cover_image_id' => ['nullable', Rule::exists('images', 'id')->where('user_id', auth()->id())->whereNull('deleted_at')],
         ]);
 
         try {
@@ -130,7 +131,7 @@ class GalleryController extends Controller {
         $request->validate([
             'title' => 'string|max:255',
             'description' => 'nullable|string',
-            'cover_image_id' => 'nullable|exists:images,id',
+            'cover_image_id' => ['nullable', Rule::exists('images', 'id')->where('user_id', auth()->id())->whereNull('deleted_at')],
         ]);
 
         try {
@@ -226,6 +227,7 @@ class GalleryController extends Controller {
      */
     public function removeImage($galleryId, $imageId) {
         $gallery = Gallery::where('user_id', auth()->id())->findOrFail($galleryId);
+        Image::withTrashed()->where('user_id', auth()->id())->findOrFail($imageId);
 
         try {
             $gallery->images()->detach($imageId);
@@ -255,7 +257,7 @@ class GalleryController extends Controller {
         $gallery = Gallery::where('user_id', auth()->id())->findOrFail($galleryId);
 
         $request->validate([
-            'image_id' => 'required|exists:images,id',
+            'image_id' => ['required', Rule::exists('images', 'id')->where('user_id', auth()->id())->whereNull('deleted_at')],
         ]);
 
         try {
@@ -289,7 +291,7 @@ class GalleryController extends Controller {
 
         $request->validate([
             'image_ids' => 'required|array',
-            'image_ids.*' => 'exists:images,id',
+            'image_ids.*' => [Rule::exists('images', 'id')->where('user_id', auth()->id())->whereNull('deleted_at')],
         ]);
 
         try {

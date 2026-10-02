@@ -32,7 +32,7 @@ Route::prefix('_1')->group(function () {
 
     Route::get('test', [ApiController::class, 'api'])->name('api.test');
 
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 
     // Daily storage maintenance (Vercel Cron uses GET). Machine auth only: Bearer CRON_SECRET,
     // fails closed when the secret is not configured. Not under auth:sanctum or sessions.

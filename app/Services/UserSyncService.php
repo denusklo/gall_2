@@ -34,6 +34,16 @@ class UserSyncService
             $email = $firebaseUser['email'] ?? null;
             if ($email) {
                 $user = User::where('email', $email)->first();
+
+                // Never link to an existing account by an unverified email
+                // (prevents takeover by registering the victim's email in Firebase).
+                if ($user && empty($firebaseUser['emailVerified'])) {
+                    Log::warning('Refused to link unverified Firebase email to existing user', [
+                        'user_id' => $user->id,
+                        'firebase_uid' => $firebaseUid,
+                    ]);
+                    throw new \RuntimeException('Firebase email is not verified; cannot link to existing account.');
+                }
             }
         }
 

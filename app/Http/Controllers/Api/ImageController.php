@@ -340,7 +340,7 @@ class ImageController extends Controller {
     public function upload(Request $request) {
         // Validate the request
         $request->validate([
-            'file' => 'required|file',
+            'file' => 'required|file|mimes:jpeg,png,gif,webp|mimetypes:image/jpeg,image/png,image/gif,image/webp',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'category_ids' => 'nullable|array',

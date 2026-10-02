@@ -21,9 +21,11 @@ class UserController extends Controller
 
     public function create(Request $request)
     {
-        // dd($request->all());
-
-        $data = $request->all();
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
 
         User::create([
             'name' => $data['name'],
@@ -36,7 +38,10 @@ class UserController extends Controller
 
     public function login(Request $request)
     {
-        $credentials = $request->only('email', 'password');
+        $credentials = $request->validate([
+            'email' => 'required|string|email',
+            'password' => 'required|string',
+        ]);
 
         if (Auth::guard('web')->attempt($credentials)) {
             // Generate token for API access
@@ -49,7 +54,11 @@ class UserController extends Controller
             return redirect()->intended('home');
         }
 
-        return redirect()->route('user.login.form')->with('error', 'User not found');
+        if ($request->expectsJson()) {
+            return response()->json(['error' => 'Invalid credentials'], 401);
+        }
+
+        return redirect()->route('mysql.login.form')->with('error', 'Invalid credentials');
     }
 
 }

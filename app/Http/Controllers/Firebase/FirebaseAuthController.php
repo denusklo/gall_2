@@ -66,6 +66,13 @@ class FirebaseAuthController extends Controller
 
     public function store(Request $request)
     {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'password' => 'required|string|min:6',
+            'phone' => ['nullable', 'regex:/^\+[1-9]\d{1,14}$/'],
+        ]);
+
         $auth = $this->auth;
         $userProperties = [
             'email' => $request->email,

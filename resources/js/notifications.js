@@ -236,42 +236,68 @@ const NotificationService = {
             return;
         }
 
-        container.innerHTML = this.notifications.map(notif => {
-            const isUnread = !notif.read_at;
-            const timeAgo = this.getTimeAgo(notif.created_at);
-            const typeIcon = this.getTypeIcon(notif.type);
+        const el = (tag, className, text) => {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined) node.textContent = text;
+            return node;
+        };
 
-            return `
-                <div class="notification-item ${isUnread ? 'unread' : ''}"
-                     data-id="${notif.id}"
-                     style="cursor: pointer; border-left: 3px solid ${this.getTypeColor(notif.type)}; padding: 0.75rem 1rem;">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div class="flex-grow-1" onclick="NotificationService.handleNotificationClick(${notif.id}, '${notif.data?.type || ''}')">
-                            <div class="d-flex align-items-center mb-1">
-                                <i class="${typeIcon} mr-2" style="color: inherit;"></i>
-                                <strong style="color: #212529;">${notif.title}</strong>
-                            </div>
-                            <p class="mb-1 small" style="color: #6c757d;">${notif.body || ''}</p>
-                            <small style="color: #6c757d;">${timeAgo}</small>
-                        </div>
-                        <div class="d-flex align-items-center">
-                            ${isUnread ? `
-                                <button class="btn btn-sm btn-link text-success p-0 ml-2"
-                                        onclick="event.stopPropagation(); NotificationService.markAsRead(${notif.id})"
-                                        title="Mark as read">
-                                    <i class="fas fa-check"></i>
-                                </button>
-                            ` : ''}
-                            <button class="btn btn-sm btn-link text-muted p-0 ml-2"
-                                    onclick="event.stopPropagation(); NotificationService.deleteNotification(${notif.id})"
-                                    title="Delete">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
+        const iconButton = (className, title, iconClass, onClick) => {
+            const btn = el('button', className);
+            btn.type = 'button';
+            btn.title = title;
+            btn.appendChild(el('i', iconClass));
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                onClick();
+            });
+            return btn;
+        };
+
+        const fragment = document.createDocumentFragment();
+
+        this.notifications.forEach(notif => {
+            const isUnread = !notif.read_at;
+
+            const item = el('div', `notification-item ${isUnread ? 'unread' : ''}`);
+            item.dataset.id = String(notif.id);
+            item.style.cssText = `cursor: pointer; border-left: 3px solid ${this.getTypeColor(notif.type)}; padding: 0.75rem 1rem;`;
+
+            const row = el('div', 'd-flex justify-content-between align-items-start');
+
+            const content = el('div', 'flex-grow-1');
+            content.addEventListener('click', () => this.handleNotificationClick(notif.id, notif.data?.type || ''));
+
+            const titleRow = el('div', 'd-flex align-items-center mb-1');
+            const icon = el('i', `${this.getTypeIcon(notif.type)} mr-2`);
+            icon.style.color = 'inherit';
+            const title = el('strong', '', notif.title ?? '');
+            title.style.color = '#212529';
+            titleRow.append(icon, title);
+
+            const body = el('p', 'mb-1 small', notif.body || '');
+            body.style.color = '#6c757d';
+
+            const time = el('small', '', this.getTimeAgo(notif.created_at));
+            time.style.color = '#6c757d';
+
+            content.append(titleRow, body, time);
+
+            const actions = el('div', 'd-flex align-items-center');
+            if (isUnread) {
+                actions.appendChild(iconButton('btn btn-sm btn-link text-success p-0 ml-2', 'Mark as read', 'fas fa-check',
+                    () => this.markAsRead(notif.id)));
+            }
+            actions.appendChild(iconButton('btn btn-sm btn-link text-muted p-0 ml-2', 'Delete', 'fas fa-times',
+                () => this.deleteNotification(notif.id)));
+
+            row.append(content, actions);
+            item.appendChild(row);
+            fragment.appendChild(item);
+        });
+
+        container.replaceChildren(fragment);
     },
 
     handleNotificationClick(id, type) {

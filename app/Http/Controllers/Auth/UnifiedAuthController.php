@@ -308,7 +308,6 @@ class UnifiedAuthController extends Controller
                 'auth_provider' => Auth::user()->auth_provider,
                 'firebase_uid' => Auth::user()->firebase_uid,
             ] : null,
-            'api_token' => session('api_token'),
         ]);
     }
 }

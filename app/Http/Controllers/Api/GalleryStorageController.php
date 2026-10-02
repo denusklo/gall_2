@@ -40,7 +40,7 @@ class GalleryStorageController extends Controller
     {
         $request->validate([
             'filename' => 'required|string',
-            'content_type' => 'required|string',
+            'content_type' => 'required|string|in:image/jpeg,image/png,image/gif,image/webp',
             'size' => 'required|integer|min:0|max:52428800', // 50MB max
             'credential_id' => 'nullable|integer|min:1',
         ]);

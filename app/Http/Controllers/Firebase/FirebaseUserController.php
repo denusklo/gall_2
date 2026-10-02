@@ -13,6 +13,24 @@ class FirebaseUserController extends Controller
         $this->database = app('firebase.database');
     }
     
+    /**
+     * Resolve the target uid. Defaults to the logged-in user; acting on a
+     * different uid requires Firebase admin privileges.
+     */
+    protected function targetUid(Request $request): string
+    {
+        $own = (string) session()->get('verified_user_id');
+        $uid = $request->input('uid');
+
+        if (empty($uid) || $uid === $own) {
+            return $own;
+        }
+
+        abort_unless((new FirebaseAdminController())->isCurrentUserAdmin(), 403, 'Admin privileges required.');
+
+        return (string) $uid;
+    }
+
     public function index(Request $request)
     {
         $auth = $this->auth;
@@ -46,7 +64,7 @@ class FirebaseUserController extends Controller
             return redirect()->route('firebase.login.form')->with('error', 'Login to access this page');
         }
         
-        $uid = $request->uid ?? session()->get('verified_user_id');
+        $uid = $this->targetUid($request);
         try {
             $user = $auth->getUser($uid);
 
@@ -66,7 +84,7 @@ class FirebaseUserController extends Controller
             return redirect()->route('firebase.login.form')->with('error', 'Login to access this page');
         }
 
-        $uid = $request->uid ?? session()->get('verified_user_id');
+        $uid = $this->targetUid($request);
 
         // Validate phone number format (E.164 format: + followed by digits only)
         $request->validate([
@@ -95,7 +113,7 @@ class FirebaseUserController extends Controller
         $auth = $this->auth;
         
         try {
-            $uid = $request->uid;
+            $uid = $this->targetUid($request);
             
             // Check if the user has permission to delete (you may want to add admin check here)
             if (empty(session()->get('verified_user_id'))) {
@@ -111,7 +129,7 @@ class FirebaseUserController extends Controller
                 return redirect()->route('firebase.login.form')->with('success', 'Your account has been deleted successfully!');
             }
             
-            return redirect()->route('users.index')->with('success', 'User deleted successfully!');
+            return redirect()->back()->with('success', 'User deleted successfully!');
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
             return redirect()->back()->with('error', 'User not found!');
         } catch (\Exception $e) {

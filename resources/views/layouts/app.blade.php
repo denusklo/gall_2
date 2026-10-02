@@ -219,9 +219,13 @@
                                             <i class="fas fa-user-edit mr-2"></i>{{ __('Edit Profile') }}
                                         </a>
                                         <div class="dropdown-divider"></div>
-                                        <a class="dropdown-item" href="{{ route('logout') }}">
+                                        <a class="dropdown-item" href="#"
+                                            onclick="event.preventDefault(); document.getElementById('logout-form-fb').submit();">
                                             <i class="fas fa-sign-out-alt mr-2"></i>{{ __('Logout') }}
                                         </a>
+                                        <form id="logout-form-fb" action="{{ route('logout') }}" method="POST" class="d-none">
+                                            @csrf
+                                        </form>
                                     </div>
                                 </li>
                             @endif
@@ -243,16 +247,10 @@
                                         <div class="dropdown-divider"></div>
                                     @endif
 
-                                    @if(Auth::user()->hasDualAuth() || session()->has('verified_user_id'))
-                                        <a class="dropdown-item" href="{{ route('logout') }}">
-                                            <i class="fas fa-sign-out-alt mr-2"></i>{{ __('Logout') }}
-                                        </a>
-                                    @else
-                                        <a class="dropdown-item" href="#"
-                                            onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
-                                            <i class="fas fa-sign-out-alt mr-2"></i>{{ __('Logout') }}
-                                        </a>
-                                    @endif
+                                    <a class="dropdown-item" href="#"
+                                        onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+                                        <i class="fas fa-sign-out-alt mr-2"></i>{{ __('Logout') }}
+                                    </a>
 
                                     <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
                                         @csrf

@@ -67,7 +67,7 @@ Route::middleware(['guest'])->prefix('firebase')->as('firebase.')->group(functio
 });
 
 Route::prefix('firebase')->as('firebase.')->group(function () {
-    Route::get('/logout', [FirebaseAuthController::class, 'logout'])->name('logout');
+    Route::post('/logout', [FirebaseAuthController::class, 'logout'])->name('logout');
 });
 
 /*
@@ -89,7 +89,7 @@ Route::middleware(['guest'])->group(function () {
     Route::post('/register', [UnifiedAuthController::class, 'register'])->name('register.post');
 });
 
-Route::get('/logout', [UnifiedAuthController::class, 'logout'])->name('logout');
+Route::post('/logout', [UnifiedAuthController::class, 'logout'])->name('logout');
 Route::get('/auth/status', [UnifiedAuthController::class, 'status'])->name('auth.status');
 
 // FCM Config endpoint for service worker
@@ -135,7 +135,7 @@ Route::middleware( ['firebase.auth'] )->group(function() {
 
     Route::match(['get', 'post'], 'user/edit', [FirebaseUserController::class, 'edit'])->name('user.edit');
     Route::put('user/update', [FirebaseUserController::class, 'update'])->name('user.update');
-    Route::any('user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
+    Route::match(['post', 'delete'], 'user/delete', [FirebaseUserController::class, 'delete'])->name('user.delete');
     Route::get('firebase', [FirebaseController::class, 'index']);
 
 });
