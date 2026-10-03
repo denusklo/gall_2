@@ -279,6 +279,33 @@ class UnifiedAuthController extends Controller
     public function logout(Request $request)
     {
         $user = Auth::user();
+        $pushRevoked = true;
+        $binding = $request->session()->get('push_binding');
+        $cachedBearer = $request->session()->get('api_token');
+        if ($user) {
+            if (is_array($binding) && ($binding['uid'] ?? null) === $user->firebase_uid
+                && is_string($binding['id'] ?? null)) {
+                try {
+                    // One conditional tombstone revokes this session's devices without a scan.
+                    app(\App\Services\FcmTokenService::class)->revokeSession($user->firebase_uid, $binding['id']);
+                } catch (\Throwable $e) {
+                    $pushRevoked = false;
+                    Log::warning('Logout push revocation could not be confirmed', ['exception_class' => get_class($e)]);
+                }
+            }
+            try {
+                if (is_string($cachedBearer)) {
+                    $record = \Laravel\Sanctum\PersonalAccessToken::findToken($cachedBearer);
+                    if ($record && (int) $record->tokenable_id === (int) $user->getKey()
+                        && $record->tokenable_type === $user->getMorphClass()) {
+                        $record->delete();
+                    }
+                }
+            } catch (\Throwable $e) {
+                $pushRevoked = false;
+                Log::warning('Logout bearer revocation could not be confirmed', ['exception_class' => get_class($e)]);
+            }
+        }
 
         // Clear Laravel session
         Auth::logout();
@@ -292,12 +319,11 @@ class UnifiedAuthController extends Controller
         session()->forget('api_token');
         session()->forget('api_token_firebase_uid');
 
-        // Revoke Sanctum tokens
-        if ($user) {
-            $user->tokens()->delete();
+        $response = redirect()->route('login')->with('success', 'Logged out successfully');
+        if (!$pushRevoked) {
+            $response->with('warning', 'Logged out, but device notification cleanup could not be confirmed.');
         }
-
-        return redirect()->route('login')->with('success', 'Logged out successfully');
+        return $response;
     }
 
     /**

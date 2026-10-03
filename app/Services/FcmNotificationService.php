@@ -53,125 +53,103 @@ class FcmNotificationService
      */
     public function sendToUser($firebaseUid, $title, $body, $type = 'info', $data = [], $domain = null)
     {
+        $result = $this->sendToUserDetailed($firebaseUid, $title, $body, $type, $data, $domain);
+        // Preserve history-only success for existing callers, but not all-failed push success.
+        return $result['history_saved'] && ($result['attempted'] === 0 || $result['provider_accepted'] > 0)
+            && !$result['authority_unavailable'];
+    }
+
+    public function sendToUserDetailed($firebaseUid, $title, $body, $type = 'info', $data = [], $domain = null): array
+    {
+        $result = ['history_saved' => false, 'attempted' => 0, 'provider_accepted' => 0,
+            'failed' => 0, 'skipped' => 0, 'authority_unavailable' => false];
         try {
-            // Get user by Firebase UID
             $user = \App\Models\User::where('firebase_uid', $firebaseUid)->first();
-
-            // Save notification to database (persists even if FCM fails or user offline)
             $this->saveNotification($firebaseUid, $user?->id, $title, $body, $type, $data);
-
-            // Get FCM tokens for this user
-            $fcmTokenService = app(FcmTokenService::class);
-
-            // Filter by domain if provided
-            if ($domain) {
-                $tokens = $fcmTokenService->getUserTokensForDomain($firebaseUid, $domain);
-            } else {
-                $tokens = $fcmTokenService->getUserTokens($firebaseUid);
+            $result['history_saved'] = true;
+        } catch (\Throwable $e) {
+            Log::warning('Notification history unavailable', ['exception_class' => get_class($e)]);
+            return $result;
+        }
+        try {
+            // All-domain fanout is not an environment boundary. This deployment sends only its origin.
+            $origin = app(PushOrigin::class)->current();
+            if ($domain !== null && app(PushOrigin::class)->normalize($domain) !== $origin) {
+                throw new \RuntimeException('Push origin mismatch');
             }
-
-            if (empty($tokens)) {
-                Log::info('No FCM tokens found for user, notification saved to DB only', [
-                    'firebase_uid' => $firebaseUid,
-                    'domain' => $domain
-                ]);
-                return true; // Still success since saved to DB
+            $service = app(FcmTokenService::class);
+            $rows = $service->getRegistrations($firebaseUid, $origin);
+            foreach ($rows as $row) {
+                $outcome = $this->attemptRegistration($firebaseUid, $row, $title, $body, array_merge($data, ['type' => $type]));
+                if ($outcome === 'skipped' || $outcome === 'unavailable') {
+                    $result['skipped']++;
+                    $result['authority_unavailable'] = $result['authority_unavailable'] || $outcome === 'unavailable';
+                    continue;
+                }
+                $result['attempted']++;
+                $result[$outcome === 'accepted' ? 'provider_accepted' : 'failed']++;
             }
+        } catch (\Throwable $e) {
+            $result['authority_unavailable'] = true;
+            Log::warning('Push send authority unavailable', ['exception_class' => get_class($e)]);
+        }
+        return $result;
+    }
 
-            // Send FCM notification to all user's devices
-            // Note: Using individual send() instead of sendMulticast() due to
-            // Google deprecating the /batch endpoint that sendMulticast() uses
-            $notification = FirebaseNotification::create($title, $body);
+    public function sendToRegistration(string $uid, array $row, string $title, string $body, array $data = []): bool
+    {
+        return $this->attemptRegistration($uid, $row, $title, $body, $data) === 'accepted';
+    }
 
-            $successCount = 0;
-            $failCount = 0;
-
-            foreach ($tokens as $token) {
+    private function attemptRegistration(string $uid, array $row, string $title, string $body, array $data): string
+    {
+        try {
+            $origin = app(PushOrigin::class)->current();
+            $service = app(FcmTokenService::class);
+            if ($service->registration($uid, $row['token'], $row['generation'], $origin) === null) {
+                return 'skipped';
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Push send authority unavailable', ['exception_class' => get_class($e)]);
+            return 'unavailable';
+        }
+        try {
+            $message = CloudMessage::withTarget('token', $row['token'])
+                ->withNotification(FirebaseNotification::create($title, $body))
+                ->withData(array_merge($data, ['recipient_uid' => $uid]))
+                ->withWebPushConfig(WebPushConfig::fromArray([
+                    'fcm_options' => ['link' => $origin . '/images'],
+                    'headers' => ['TTL' => '3600', 'Urgency' => 'high'],
+                ]));
+            // Accepted/queued messages can outlive this check and explicit logout.
+            $this->messaging->send($message);
+            return 'accepted';
+        } catch (\Throwable $e) {
+            Log::warning('Push not accepted', ['exception_class' => get_class($e)]);
+            if (self::isUnregistered($e)) {
                 try {
-                    // Create WebPushConfig for Firefox and Edge support
-                    // Both Firefox and Edge use their own push services (not FCM directly)
-                    $webPushConfig = WebPushConfig::fromArray([
-                        'fcm_options' => [
-                            'link' => url('/images')
-                        ],
-                        // Add headers for Firefox/Edge compatibility
-                        'headers' => [
-                            'TTL' => '3600', // 1 hour TTL for push message
-                            'Urgency' => 'high' // High urgency for better delivery
-                        ]
-                    ]);
-
-                    $targetedMessage = CloudMessage::withTarget('token', $token)
-                        ->withNotification($notification)
-                        ->withData(array_merge($data, ['type' => $type]))
-                        ->withWebPushConfig($webPushConfig);
-
-                    // Log before sending for debugging
-                    Log::info('[FCM SEND] Sending notification', [
-                        'token' => substr($token, 0, 30) . '...',
-                        'title' => $title,
-                        'domain' => $domain ?? 'all'
-                    ]);
-
-                    $this->messaging->send($targetedMessage);
-
-                    Log::info('[FCM SEND] Successfully sent', [
-                        'token' => substr($token, 0, 30) . '...'
-                    ]);
-
-                    $successCount++;
-                } catch (\Exception $e) {
-                    $failCount++;
-                    $errorMsg = $e->getMessage();
-
-                    Log::warning('Failed to send to specific token', [
-                        'token' => substr($token, 0, 20) . '...',
-                        'error' => $errorMsg
-                    ]);
-
-                    // Check if token is invalid/unregistered and clean it up
-                    if (
-                        strpos($errorMsg, 'not known to the Firebase project') !== false ||
-                        strpos($errorMsg, 'unregistered') !== false ||
-                        strpos($errorMsg, 'invalid') !== false ||
-                        $e->getCode() === 404
-                    ) {
-                        Log::info('Cleaning up invalid FCM token', [
-                            'firebase_uid' => $firebaseUid,
-                            'token' => substr($token, 0, 20) . '...'
-                        ]);
-
-                        // Remove invalid token from Firebase
-                        try {
-                            $fcmTokenService = app(FcmTokenService::class);
-                            $fcmTokenService->removeToken($firebaseUid, $token);
-                            Log::info('Invalid FCM token removed successfully');
-                        } catch (\Exception $cleanupError) {
-                            Log::error('Failed to remove invalid token', [
-                                'error' => $cleanupError->getMessage()
-                            ]);
-                        }
-                    }
+                    app(FcmTokenService::class)->removeToken($uid, $row['token'], $row['generation']);
+                } catch (\Throwable $cleanup) {
+                    Log::warning('Push retirement unavailable', ['exception_class' => get_class($cleanup)]);
                 }
             }
+            return 'failed';
+        }
+    }
 
-            Log::info('FCM notification sent to user', [
-                'firebase_uid' => $firebaseUid,
-                'domain' => $domain ?? 'all',
-                'success' => $successCount,
-                'failures' => $failCount,
-                'total_tokens' => count($tokens),
-                'title' => $title
-            ]);
-
-            return true;
-        } catch (\Exception $e) {
-            Log::error('Failed to send notification to user', [
-                'firebase_uid' => $firebaseUid,
-                'error' => $e->getMessage()
-            ]);
+    public static function isUnregistered(\Throwable $e): bool
+    {
+        if (!$e instanceof \Kreait\Firebase\Exception\MessagingException) {
             return false;
         }
+        foreach ($e->errors()['error']['details'] ?? [] as $detail) {
+            if (is_array($detail)
+                && ($detail['@type'] ?? null) === 'type.googleapis.com/google.firebase.fcm.v1.FcmError'
+                && ($detail['errorCode'] ?? null) === 'UNREGISTERED') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -205,18 +183,11 @@ class FcmNotificationService
 
             $this->messaging->send($message);
 
-            Log::info('FCM notification sent', [
-                'token' => substr($token, 0, 20) . '...',
-                'title' => $title,
-                'body' => $body
-            ]);
+            Log::info('FCM provider accepted notification');
 
             return true;
         } catch (\Exception $e) {
-            Log::error('FCM notification failed', [
-                'token' => substr($token, 0, 20) . '...',
-                'error' => $e->getMessage()
-            ]);
+            Log::warning('FCM notification not accepted', ['exception_class' => get_class($e)]);
             return false;
         }
     }
@@ -459,20 +430,18 @@ class FcmNotificationService
      */
     public function validateToken($token)
     {
+        return $this->validationStatus($token) === 'valid';
+    }
+
+    public function validationStatus(string $token): string
+    {
         try {
-            // Send a test message with dry_run=true to validate token
             $message = CloudMessage::withTarget('token', $token)
                 ->withNotification(FirebaseNotification::create('Test', 'Test'));
-
             $this->messaging->validate($message);
-
-            return true;
-        } catch (\Exception $e) {
-            Log::warning('FCM token validation failed', [
-                'token' => substr($token, 0, 20) . '...',
-                'error' => $e->getMessage()
-            ]);
-            return false;
+            return 'valid';
+        } catch (\Throwable $e) {
+            return self::isUnregistered($e) ? 'unregistered' : 'unknown';
         }
     }
 }

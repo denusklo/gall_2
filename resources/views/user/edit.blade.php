@@ -19,32 +19,8 @@
     #email-verification .email-message { min-height: 1.5em; margin-top: .75rem; }
     #profile-settings .invalid-feedback, #email-verification [role="alert"] { color: var(--error); }
     @media (max-width: 575.98px) { #email-verification .email-actions { flex-direction: column; } }
-    body.profile-settings-page .navbar-toggler { min-width: 44px; min-height: 44px; }
-    body.profile-settings-page .navbar .nav-link, body.profile-settings-page .navbar .dropdown-item { min-height: 44px; overflow-wrap: anywhere; white-space: normal; }
-    body.profile-settings-page .navbar .nav-link { color: #526070; }
-    body.profile-settings-page .navbar .nav-link:hover, body.profile-settings-page .navbar .nav-link:focus { color: #263445; }
-    body.profile-settings-page #notificationDropdown { min-width: 0 !important; width: min(350px, calc(100vw - 30px)); }
-    body.profile-settings-page .navbar :focus-visible { outline: 3px solid #17629b; outline-offset: 3px; }
     @media (prefers-color-scheme: dark) {
-        body.profile-settings-page { background: #15202c; color: #edf2f7; color-scheme: dark; }
-        body.profile-settings-page .navbar.bg-white,
-        body.profile-settings-page .navbar .dropdown-menu { background: #202b38 !important; color: #edf2f7; }
-        body.profile-settings-page .navbar .navbar-brand,
-        body.profile-settings-page .navbar .nav-link,
-        body.profile-settings-page .navbar .nav-link:hover,
-        body.profile-settings-page .navbar .nav-link:focus,
-        body.profile-settings-page .navbar .dropdown-item,
-        body.profile-settings-page .navbar .dropdown-header { color: #edf2f7; }
-        body.profile-settings-page .navbar .text-muted { color: #bec9d6 !important; }
-        body.profile-settings-page .navbar .btn-link { color: #8dc9f5; }
-        body.profile-settings-page .navbar .text-success { color: #91dbac !important; }
-        body.profile-settings-page .navbar .dropdown-item:hover,
-        body.profile-settings-page .navbar .dropdown-item:focus { background: #35465a; color: #edf2f7; }
-        body.profile-settings-page .navbar .dropdown-menu,
-        body.profile-settings-page .navbar .dropdown-divider,
-        body.profile-settings-page .navbar-toggler { border-color: #929eae; }
-        body.profile-settings-page .navbar-toggler-icon { filter: invert(1); }
-        body.profile-settings-page .navbar :focus-visible { outline-color: #8dc9f5; }
+        body.profile-settings-page { color: #edf2f7; color-scheme: dark; }
         #profile-settings { --surface: #202b38; --ink: #edf2f7; --border: #929eae; --accent: #8dc9f5; --on-accent: #152332; --error: #ffb4b4; }
     }
 </style>

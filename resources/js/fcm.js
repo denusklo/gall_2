@@ -1,499 +1,525 @@
-/**
- * Firebase Cloud Messaging (FCM) Setup
- * This file handles FCM notification permission and token registration
- */
+import { getApiToken, refreshApiToken, clearApiToken } from './apiTokenRefresh';
 
-import { getApiToken, refreshApiToken } from './apiTokenRefresh';
+const PREFERENCE_KEY = 'gall2.push.device.v1';
+const STOP_KEY = 'gall2.push.stop.v1';
+const REGISTRATION_KEY = 'gall2.push.registration.v1';
+const INSTALL_KEY = 'gall2.push.install.v1';
+const RETIRED_KEY = 'gall2.push.retired.v1';
+const TIMEOUT_MS = 6000;
 
-// Firebase configuration - these should be loaded from environment
-const firebaseConfig = {
-    apiKey: window.FIREBASE_CONFIG?.apiKey || '',
-    authDomain: window.FIREBASE_CONFIG?.authDomain || '',
-    databaseURL: window.FIREBASE_CONFIG?.databaseURL || '',
-    projectId: window.FIREBASE_CONFIG?.projectId || '',
-    storageBucket: window.FIREBASE_CONFIG?.storageBucket || '',
-    messagingSenderId: window.FIREBASE_CONFIG?.messagingSenderId || '',
-    appId: window.FIREBASE_CONFIG?.appId || '',
-    measurementId: window.FIREBASE_CONFIG?.measurementId || ''
-};
-
-// FCM Service
 const FcmService = {
     messaging: null,
     token: null,
-    swRegistration: null, // Store service worker registration
+    generation: null,
+    registrationUid: null,
+    pageUid: null,
+    installId: null,
+    setupError: null,
+    retryRequired: false,
+    retiredTokens: new Set(),
+    swRegistration: null,
     verifiedUid: null,
-    verifiedAt: 0,
-    VERIFY_TTL_MS: 60 * 1000,
+    ready: false,
+    busy: false,
+    stopped: false,
+    epoch: 0,
+    state: 'preparing',
+    controllers: new Set(),
+    installPrompt: null,
+    channel: null,
 
-    /**
-     * Initialize FCM
-     */
-    async init() {
+    installation() {
         try {
-            // Check if Firebase is loaded
-            if (typeof firebase === 'undefined') {
-                console.warn('[FCM] Firebase SDK not loaded');
-                return false;
+            let id = localStorage.getItem(INSTALL_KEY);
+            if (!id) {
+                id = window.crypto.randomUUID();
+                localStorage.setItem(INSTALL_KEY, id);
             }
-
-            // Check if service worker is supported
-            if (!('serviceWorker' in navigator)) {
-                console.error('[FCM] Service Worker not supported');
-                return false;
-            }
-
-            // Register service worker
-            this.swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-                scope: '/'
-            });
-
-            // Wait for service worker to be ready
-            await navigator.serviceWorker.ready;
-
-            // Edge-specific fix: Ensure SW is actually active before proceeding
-            // Edge can be slower to activate service workers
-            if (!this.swRegistration.active) {
-                await new Promise(resolve => {
-                    if (this.swRegistration.active) {
-                        resolve();
-                    } else {
-                        this.swRegistration.addEventListener('updatefound', () => {
-                            const newWorker = this.swRegistration.installing;
-                            if (newWorker) {
-                                newWorker.addEventListener('statechange', () => {
-                                    if (newWorker.state === 'activated') {
-                                        resolve();
-                                    }
-                                });
-                            }
-                        });
-
-                        // Fallback timeout for Edge
-                        setTimeout(resolve, 3000);
-                    }
-                });
-            }
-
-            // Initialize Firebase
-            if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-            }
-
-            // Get messaging instance
-            this.messaging = firebase.messaging();
-
-            // Handle incoming messages
-            this.setupMessageHandler();
-
-            // Test authentication first
-            await this.testAuth();
-
-            // Request permission and get token
-            await this.requestPermissionAndGetToken();
-
-            return true;
-        } catch (error) {
-            console.error('[FCM] Initialization failed:', error);
-            return false;
-        }
+            localStorage.setItem(INSTALL_KEY, id);
+            return id;
+        } catch (_) { return null; }
     },
 
-    /**
-     * Request notification permission and get token
-     */
-    async requestPermissionAndGetToken() {
+    receiveStop(message) {
+        if (!message || message.type !== 'stop' || message.origin !== window.location.origin ||
+            !this.installId || message.installId !== this.installId ||
+            !this.pageUid || message.uid !== this.pageUid) return;
+        this.stopLocally(false);
+        this.render('disabled', 'Device notifications stopped in another tab. Reload to change settings.');
+    },
+
+    tokenRetired(token) {
         try {
-            // Request permission
-            const permission = await Notification.requestPermission();
-
-            if (permission !== 'granted') {
-                return false;
-            }
-
-            // Use the stored service worker registration
-            // This prevents Firebase from creating its own internal SW
-
-            // Get FCM token with explicit service worker registration
-            // This prevents Firebase from creating its own internal SW
-            const currentToken = await this.messaging.getToken({
-                vapidKey: window.FIREBASE_CONFIG?.vapidKey || '',
-                serviceWorkerRegistration: this.swRegistration
-            });
-
-            if (!currentToken) {
-                return false;
-            }
-
-            // Save token
-            this.token = currentToken;
-
-            // Log current FCM token info
-            const domain = window.location.origin;
-            const deviceInfo = this.getDeviceInfo();
-
-            // Register token with server
-            await this.registerTokenWithServer(currentToken);
-
-            return true;
-        } catch (error) {
-            console.error('Error getting FCM token:', error);
-            return false;
-        }
+            const retired = JSON.parse(localStorage.getItem(RETIRED_KEY) || '[]');
+            if (!Array.isArray(retired)) return true;
+            // Probe writes before enrollment: retirement must survive a reload.
+            localStorage.setItem(RETIRED_KEY, JSON.stringify(retired));
+            return retired.includes(token) || this.retiredTokens.has(token) || this.preference()?.retiredToken === token;
+        } catch (_) { return true; }
     },
 
-    /**
-     * Refresh API token from server
-     */
-    async refreshApiToken() {
-        return refreshApiToken();
-    },
-
-    /**
-     * Test authentication before registering FCM token
-     */
-    async testAuth() {
+    preference() {
         try {
-            let apiToken = await getApiToken();
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const value = localStorage.getItem(PREFERENCE_KEY);
+            // A read-only storage area cannot reliably remember a later opt-out.
+            localStorage.setItem(PREFERENCE_KEY, value || 'null');
+            return JSON.parse(value) || null;
+        }
+        catch (_) { return { enabled: false, storageUnavailable: true }; }
+    },
 
+    registration() {
+        try { return JSON.parse(localStorage.getItem(REGISTRATION_KEY)) || null; }
+        catch (_) { return null; }
+    },
 
-            const response = await fetch('/apiv/_1/test-auth', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${apiToken}`,
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken || '',
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            });
+    saveRegistration(value) {
+        try { localStorage.setItem(REGISTRATION_KEY, JSON.stringify(value)); }
+        catch (_) { /* Memory remains available for this page's cleanup. */ }
+    },
 
-            if (response.ok) {
-                const data = await response.json();
-                return true;
-            } else if (response.status === 401) {
-                // Token is invalid/expired, try to refresh
-                console.warn('[FCM] Token invalid, attempting refresh...');
-                const newToken = await this.refreshApiToken();
+    savePreference(value) {
+        try { localStorage.setItem(PREFERENCE_KEY, JSON.stringify(value)); return true; }
+        catch (_) { return false; }
+    },
 
-                if (newToken) {
-                    // Retry auth test with new token
-                    const retryResponse = await fetch('/apiv/_1/test-auth', {
-                        method: 'GET',
-                        headers: {
-                            'Authorization': `Bearer ${newToken}`,
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken || '',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
+    standalone() {
+        return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    },
 
-                    if (retryResponse.ok) {
-                        const data = await retryResponse.json();
-                        return true;
-                    }
-                }
+    ios() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    },
 
-                console.error('[FCM] Auth failed even after token refresh');
-                return false;
-            } else {
-                const error = await response.text();
-                console.error('[FCM] Auth test failed. Status:', response.status);
-                console.error('[FCM] Error:', error);
-                return false;
-            }
-        } catch (error) {
-            console.error('[FCM] Auth test error:', error);
-            return false;
+    render(state, message) {
+        this.state = state;
+        const messages = {
+            preparing: 'Checking device notification support…',
+            insecure: 'Device notifications need HTTPS. Your in-app notifications still work.',
+            unavailable: 'Device notifications are unavailable in this browser. Your in-app notifications still work.',
+            install: 'On iOS or iPadOS 16.4+, add this site to your Home Screen, open its icon, then sign in. In Safari, use Share → Add to Home Screen.',
+            default: 'Device notifications are optional. Your in-app notifications still work.',
+            disabled: 'Device notifications are turned off here.',
+            denied: 'Notifications are blocked. Change this site’s browser or device notification settings to enable them.',
+            incomplete: 'Device setup is incomplete. Enable to finish setup.',
+            sending: 'Saving this device…',
+            enabled: 'Notifications are enabled on this device.',
+            sendingerror: 'Device setup could not be saved. Try again when connected.',
+            stopping: 'Turning off this device…'
+        };
+        const status = document.getElementById('devicePushStatus');
+        if (status) { status.textContent = message || messages[state]; status.dataset.state = state; }
+        const enable = document.getElementById('devicePushEnable');
+        const disable = document.getElementById('devicePushDisable');
+        if (enable) {
+            enable.hidden = !this.ready || this.stopped || ['denied', 'enabled', 'stopping'].includes(state);
+            enable.disabled = this.busy;
+        }
+        if (disable) {
+            disable.hidden = !this.ready || this.stopped || !['enabled', 'sendingerror', 'incomplete'].includes(state);
+            disable.disabled = this.busy;
         }
     },
 
-    /**
-     * Register FCM token with server
-     */
-    async registerTokenWithServer(token) {
-        try {
-            // Get API token (should be fresh from testAuth)
-            const apiToken = await getApiToken();
-
-            if (!apiToken) {
-                console.warn('[FCM] No API token found, skipping FCM registration');
-                return false;
-            }
-
-            // Get CSRF token
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-
-            // Get device info
-            const deviceInfo = this.getDeviceInfo();
-
-            // Get current domain (origin) to ensure notifications only go to this domain
-            const domain = window.location.origin;
-
-
-            // Register token
-            const response = await fetch('/apiv/_1/fcm/token', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiToken}`,
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken || '',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({
-                    token: token,
-                    device_info: deviceInfo,
-                    domain: domain
-                })
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                return true;
-            } else {
-                const errorText = await response.text();
-                console.error('[FCM] Failed to register token. Status:', response.status);
-                console.error('[FCM] Response:', errorText);
-                return false;
-            }
-        } catch (error) {
-            console.error('[FCM] Error registering FCM token:', error);
-            return false;
-        }
+    permissionState() {
+        if (Notification.permission === 'denied') return 'denied';
+        if (this.preference()?.enabled === false) return 'disabled';
+        return Notification.permission === 'granted' ? 'incomplete' : 'default';
     },
 
-
-    /**
-     * Setup foreground message handler
-     */
-    setupMessageHandler() {
-        // Detect browser
-        const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
-        const isChrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
-
-
-        if (isFirefox) {
-            console.warn('[FCM] Firefox detected - FCM may have limited support');
-        }
-
-        this.messaging.onMessage(async (payload) => {
-
-            // Verify the notification is for the current user
-            const isForCurrentUser = await this.verifyNotificationRecipient(payload);
-
-            if (!isForCurrentUser) {
-                console.warn('[FCM] Notification not for current user, ignoring');
-                return;
-            }
-
-
-            // Show notification in foreground
-            const notification = payload.notification;
-            const data = payload.data || {};
-
-            if (notification) {
-
-                // Immediately update notification badge and list
-                // This ensures the badge updates in real-time when user is on page
-                if (window.NotificationService) {
-                    window.NotificationService.fetchUnreadCount();
-                    window.NotificationService.fetchNotifications();
-                }
-
-                // Show in-app notification using iziToast
-                if (typeof iziToast !== 'undefined') {
-                    iziToast.info({
-                        title: notification.title || 'Notification',
-                        message: notification.body || '',
-                        position: 'topRight',
-                        timeout: 5000,
-                        buttons: [
-                            ['<button>View</button>', (instance, toast) => {
-                                // Handle notification click based on type
-                                this.handleNotificationClick(data);
-                                instance.hide({
-                                    transitionOut: 'fadeOutUp'
-                                }, toast, 'buttonName');
-                            }, true]
-                        ]
-                    });
-                } else {
-                    console.error('[FCM] iziToast is not defined!');
-                }
-            } else {
-                console.warn('[FCM] No notification object in payload');
-            }
+    bindControls() {
+        document.getElementById('devicePushEnable')?.addEventListener('click', () => {
+            // No await before requestPermission: Safari needs the original tap activation.
+            this.requestPermissionAndGetToken();
         });
-
+        document.getElementById('devicePushDisable')?.addEventListener('click', () => this.deactivateDevice());
+        document.getElementById('deviceInstall')?.addEventListener('click', () => this.install());
+        document.getElementById('devicePushControls')?.addEventListener('click', event => event.stopPropagation());
+        window.addEventListener('beforeinstallprompt', event => {
+            event.preventDefault();
+            this.installPrompt = event;
+            this.renderInstall();
+        });
+        window.addEventListener('appinstalled', () => {
+            this.installPrompt = null;
+            this.renderInstall();
+        });
+        window.addEventListener('storage', event => {
+            if (event.key !== STOP_KEY && event.key !== PREFERENCE_KEY) return;
+            try {
+                const value = JSON.parse(event.newValue);
+                this.receiveStop(event.key === STOP_KEY ? value : value?.stop);
+            } catch (_) { /* Ignore legacy/unscoped events, never infer identity from storage. */ }
+        });
+        if ('BroadcastChannel' in window) {
+            try {
+                this.channel = new BroadcastChannel('gall2.push.device');
+                this.channel.onmessage = event => {
+                    this.receiveStop(event.data);
+                };
+            } catch (_) { /* Storage events remain the fallback. */ }
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') this.resumeOptedIn();
+        });
+        this.renderInstall();
     },
 
-    /**
-     * Verify the FCM notification is for the currently logged-in user
-     * This prevents users from seeing notifications meant for other users
-     * when sharing the same browser/device
-     */
-    async verifyNotificationRecipient(payload) {
-        // Recently verified: avoid a test-auth round trip per foreground message.
-        if (this.verifiedUid && Date.now() - this.verifiedAt < this.VERIFY_TTL_MS) {
-            return true;
+    renderInstall() {
+        const button = document.getElementById('deviceInstall');
+        if (button) button.hidden = !this.installPrompt || this.standalone();
+        const help = document.getElementById('deviceInstallHelp');
+        if (help) {
+            help.textContent = this.standalone() ? 'Installed app. An internet connection is required.' :
+                this.ios() ? 'Home Screen apps need iOS or iPadOS 16.4+ for notifications. You may need to sign in again.' :
+                    'Installation is optional for supported Android browsers. If offered, use your browser’s install or home-screen menu. An internet connection is required.';
         }
+    },
 
+    async install() {
+        const prompt = this.installPrompt;
+        if (!prompt) return;
+        this.installPrompt = null;
+        this.renderInstall();
+        try { await prompt.prompt(); await prompt.userChoice; }
+        catch (_) { /* Browser may withdraw the install offer. */ }
+    },
+
+    async init() {
+        this.pageUid = document.getElementById('notificationBell')?.dataset.authUid || null;
+        this.installId = this.installation();
+        this.bindControls();
+        // The bundle is authenticated-only; also fail closed if loaded on a guest page.
+        if (!document.getElementById('notificationBell')) return false;
+        if (!window.isSecureContext) { this.render('insecure'); return false; }
+        if (this.ios() && !this.standalone()) { this.render('install'); return false; }
+        if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator) ||
+            typeof firebase === 'undefined' || typeof firebase.messaging?.isSupported !== 'function') {
+            this.render('unavailable'); return false;
+        }
+        const epoch = this.epoch;
         try {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            const testAuth = (token) => fetch('/apiv/_1/test-auth', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken || '',
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            });
-
-            let response = await testAuth(await getApiToken());
-
-            if (response.status === 401) {
-                const newToken = await this.refreshApiToken();
-                if (!newToken) {
-                    console.error('[FCM] Failed to refresh token during verification');
-                    return false;
-                }
-                response = await testAuth(newToken);
-            }
-
-            if (!response.ok) {
-                return false;
-            }
-
-            const currentFirebaseUid = (await response.json()).firebase_uid;
-            if (!currentFirebaseUid) {
-                return false;
-            }
-
-            // If the Firebase UID has changed, re-register the FCM token with the new user
-            const lastKnownUid = localStorage.getItem('fcm_last_firebase_uid');
-            if (lastKnownUid !== currentFirebaseUid) {
-                localStorage.setItem('fcm_last_firebase_uid', currentFirebaseUid);
-                if (this.token) {
-                    await this.registerTokenWithServer(this.token);
-                }
-            }
-
-            this.verifiedUid = currentFirebaseUid;
-            this.verifiedAt = Date.now();
+            if (!await this.bounded(firebase.messaging.isSupported())) { this.render('unavailable'); return false; }
+            if (this.stopped || epoch !== this.epoch) return false;
+            if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG || {});
+            this.messaging = firebase.messaging();
+            this.swRegistration = await this.bounded(navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+                scope: '/', updateViaCache: 'none'
+            }));
+            await this.bounded(navigator.serviceWorker.ready);
+            if (this.stopped || epoch !== this.epoch) return false;
+            this.setupMessageHandler();
+            this.ready = true;
+            this.render(this.permissionState());
+            await this.resumeOptedIn();
             return true;
-        } catch (error) {
-            // Fail closed: if the recipient can't be verified, don't show the notification.
-            console.error('[FCM] Error verifying notification recipient:', error);
+        } catch (_) {
+            if (!this.stopped) this.render('unavailable');
             return false;
         }
     },
 
-    /**
-     * Handle notification click
-     */
-    handleNotificationClick(data) {
-        // The /requests pages were removed; every notification opens the image gallery.
-        window.location.href = '/images';
+    bounded(promise, milliseconds = TIMEOUT_MS) {
+        let timer;
+        return Promise.race([
+            promise,
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), milliseconds); })
+        ]).finally(() => clearTimeout(timer));
     },
 
-    /**
-     * Get device information
-     */
-    getDeviceInfo() {
-        const userAgent = navigator.userAgent;
-        let browser = 'Unknown';
-        let os = 'Unknown';
-
-        // Detect browser
-        if (userAgent.includes('Chrome')) browser = 'Chrome';
-        else if (userAgent.includes('Firefox')) browser = 'Firefox';
-        else if (userAgent.includes('Safari')) browser = 'Safari';
-        else if (userAgent.includes('Edge')) browser = 'Edge';
-
-        // Detect OS
-        if (userAgent.includes('Windows')) os = 'Windows';
-        else if (userAgent.includes('Mac')) os = 'MacOS';
-        else if (userAgent.includes('Linux')) os = 'Linux';
-        else if (userAgent.includes('Android')) os = 'Android';
-        else if (userAgent.includes('iOS')) os = 'iOS';
-
-        return `${os} - ${browser}`;
-    },
-
-    /**
-     * Delete current token (for logout)
-     */
-    async deleteToken() {
-        if (this.token) {
+    async request(path, method = 'GET', body = null, cleanup = false) {
+        const epoch = this.epoch;
+        const valid = () => epoch === this.epoch && (cleanup || !this.stopped);
+        let bearer = await this.bounded(getApiToken(), cleanup ? 1500 : TIMEOUT_MS);
+        for (let attempt = 0; attempt < (cleanup ? 1 : 2); attempt++) {
+            if (!bearer || !valid()) return null;
+            const controller = new AbortController();
+            controller.pushRegistration = method === 'POST' && path === '/apiv/_1/fcm/token';
+            this.controllers.add(controller);
+            const timer = setTimeout(() => controller.abort(), cleanup ? 1500 : TIMEOUT_MS);
+            let response;
             try {
-                await this.messaging.deleteToken(this.token);
-                this.token = null;
-            } catch (error) {
-                console.error('Error deleting FCM token:', error);
+                response = await fetch(path, {
+                    method, credentials: 'same-origin', signal: controller.signal,
+                    headers: {
+                        'Authorization': `Bearer ${bearer}`, 'Accept': 'application/json',
+                        'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                    },
+                    ...(body ? { body: JSON.stringify(body) } : {})
+                });
+                // A late POST receipt still needs its exact generation cleaned up.
+                if (!valid() && method !== 'POST') return null;
+                if (response.ok) return await response.json();
+                if (response.status === 409) return { conflict: true };
+                if (response.status === 503) return { setupError: 'Device notification service is unavailable. Try again later.' };
+                if (response.status === 422) return { setupError: 'Device setup was rejected. Check that you are using the correct site address, then retry.' };
+            } finally {
+                clearTimeout(timer);
+                this.controllers.delete(controller);
+            }
+            if (!valid() || response.status !== 401 || attempt !== 0 || cleanup) return null;
+            bearer = await this.bounded(refreshApiToken());
+        }
+        return null;
+    },
+
+    async testAuth() {
+        this.verifiedUid = null;
+        try {
+            const epoch = this.epoch;
+            const data = await this.request('/apiv/_1/test-auth');
+            if (this.stopped || epoch !== this.epoch || typeof data?.firebase_uid !== 'string' || !data.firebase_uid) return false;
+            if (this.pageUid && this.pageUid !== data.firebase_uid) {
+                this.stopLocally(false);
+                this.render('disabled', 'Your account changed. Reload before changing device notifications.');
+                return false;
+            }
+            this.pageUid = data.firebase_uid;
+            this.verifiedUid = data.firebase_uid;
+            return true;
+        } catch (_) { return false; }
+    },
+
+    async resumeOptedIn() {
+        if (!this.ready || this.stopped || this.busy || this.retryRequired) return false;
+        if (Notification.permission !== 'granted') { this.render(this.permissionState()); return false; }
+        const preference = this.preference();
+        if (preference?.enabled === false || preference?.retryRequired) return false;
+        // Legacy granted installations can enroll without another permission prompt.
+        return this.enroll(typeof preference?.uid === 'string' ? preference.uid : null);
+    },
+
+    requestPermissionAndGetToken() {
+        if (!this.ready || this.busy || this.stopped) return Promise.resolve(false);
+        if (Notification.permission === 'denied') { this.render('denied'); return Promise.resolve(false); }
+        let permission;
+        try {
+            permission = Notification.permission === 'default' ? Notification.requestPermission() : Promise.resolve(Notification.permission);
+        } catch (_) { this.render('sendingerror'); return Promise.resolve(false); }
+        const epoch = this.epoch;
+        this.busy = true;
+        this.render('sending');
+        return Promise.resolve(permission).then(result => {
+            if (this.stopped || epoch !== this.epoch) return false;
+            this.busy = false;
+            if (result !== 'granted') { this.render(this.permissionState()); return false; }
+            this.retryRequired = false;
+            return this.enroll(this.preference()?.uid || null);
+        }).catch(() => {
+            if (!this.stopped && epoch === this.epoch) { this.busy = false; this.render('sendingerror'); }
+            return false;
+        });
+    },
+
+    async enroll(expectedUid = null) {
+        if (this.stopped || this.busy || !this.ready || Notification.permission !== 'granted') return false;
+        const epoch = this.epoch;
+        this.busy = true;
+        this.render('sending');
+        this.setupError = null;
+        let success = false;
+        try {
+            if (!this.installId || this.installation() !== this.installId || this.preference()?.storageUnavailable) return false;
+            if (!await this.testAuth()) return false;
+            if (expectedUid !== null && expectedUid !== this.verifiedUid) {
+                await this.retireToken(this.registration()?.token || this.token, epoch);
+                return false;
+            }
+            if (epoch !== this.epoch || this.stopped) return false;
+            const uid = this.verifiedUid;
+            const token = await this.bounded(this.messaging.getToken({
+                vapidKey: window.FIREBASE_CONFIG?.vapidKey || '', serviceWorkerRegistration: this.swRegistration
+            }));
+            if (!token || epoch !== this.epoch || this.stopped) return false;
+            if (this.tokenRetired(token)) return false;
+            if (this.token !== token) this.generation = null;
+            this.token = token;
+            this.registrationUid = uid;
+            this.pendingPost = this.registerTokenWithServer(token, uid, epoch);
+            if (!await this.pendingPost) return false;
+            if (epoch !== this.epoch || this.stopped) return false;
+            const saved = this.savePreference({ enabled: true, uid });
+            success = true;
+            this.busy = false;
+            this.render('enabled', saved ? null : 'Enabled for this session. Device preferences cannot be saved; automatic setup is off on your next visit.');
+            return true;
+        } catch (_) { return false; }
+        finally {
+            if (epoch === this.epoch && !this.stopped) {
+                this.busy = false;
+                if (!success) {
+                    this.retryRequired = true;
+                    this.savePreference({ ...this.preference(), retryRequired: true });
+                    this.render('sendingerror', this.setupError || 'Setup failed. Click Enable to retry. If this device changed accounts, a new subscription is required.');
+                }
             }
         }
     },
 
-    /**
-     * Get the in-memory API token, fetching it from the server (session cookie) if needed
-     */
-    async fetchApiToken() {
-        return getApiToken();
-    }
-};
-
-// ========================================
-// SERVICE WORKER MESSAGE HANDLER
-// Handles messages from the service worker
-// (e.g., keep-alive pings to maintain Firefox connection)
-// ========================================
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => {
-        const data = event.data;
-
-        // Handle keep-alive messages silently
-        if (data && data.type === 'fcm-keep-alive') {
-            return;
+    async retireToken(token, epoch) {
+        if (token) {
+            this.retiredTokens.add(token);
+            try {
+                const retired = JSON.parse(localStorage.getItem(RETIRED_KEY) || '[]');
+                localStorage.setItem(RETIRED_KEY, JSON.stringify([...new Set([...retired, token])]));
+            } catch (_) { /* Preference tombstone below is a second persistence attempt. */ }
         }
+        this.registrationUid = null;
+        this.retryRequired = true;
+        this.verifiedUid = null;
+        this.savePreference({ enabled: false, retryRequired: true, retiredToken: token || null });
+        this.saveRegistration(null);
+        this.token = null;
+        this.generation = null;
+        // One bounded retirement, never a getToken retry in this operation.
+        if (epoch === this.epoch && !this.stopped) {
+            try { await this.bounded(this.messaging.deleteToken(), 1500); }
+            catch (_) { /* Explicit retry must still reject the retired token. */ }
+        }
+    },
 
-        // Log other messages for debugging
-    });
-}
+    async registerTokenWithServer(token, uid, epoch) {
+        const result = await this.request('/apiv/_1/fcm/token', 'POST', {
+            token, device_info: this.getDeviceInfo(), domain: window.location.origin
+        });
+        if (result?.conflict) {
+            if (epoch === this.epoch && !this.stopped) await this.retireToken(token, epoch);
+            return false;
+        }
+        if (epoch === this.epoch && !this.stopped) this.setupError = result?.setupError || null;
+        if (result?.success !== true || typeof result.generation !== 'string' || !result.generation) return false;
+        if (epoch !== this.epoch || this.stopped) {
+            try { await this.bounded(this.request('/apiv/_1/fcm/token', 'DELETE', { token, generation: result.generation }, true), 3500); }
+            catch (_) { /* Logout also revokes the session independently. */ }
+            return false;
+        }
+        this.generation = result.generation;
+        this.saveRegistration({ token, generation: result.generation, uid });
+        return true;
+    },
 
-// Initialize FCM when DOM is ready
-document.addEventListener('DOMContentLoaded', async function() {
+    async verifyNotificationRecipient(payload) {
+        if (!await this.testAuth()) return false;
+        return typeof payload?.data?.recipient_uid === 'string' && payload.data.recipient_uid === this.verifiedUid;
+    },
 
-    // Check Firebase availability first
+    setupMessageHandler() {
+        this.unsubscribeMessage = this.messaging.onMessage(async payload => {
+            if (this.stopped) return;
+            const epoch = this.epoch;
+            const matches = await this.verifyNotificationRecipient(payload);
+            if (this.stopped || epoch !== this.epoch) return;
+            if (this.verifiedUid && window.NotificationService) {
+                window.NotificationService.fetchUnreadCount();
+                window.NotificationService.fetchNotifications();
+            }
+            if (!matches || !payload?.notification || typeof iziToast === 'undefined') return;
+            const escape = value => String(value || '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[char]));
+            iziToast.info({
+                title: escape(payload.notification.title || 'Notification'),
+                message: escape(payload.notification.body), position: 'topRight', timeout: 5000,
+                buttons: [['<button>View</button>', (instance, toast) => {
+                    window.location.href = '/images';
+                    instance.hide({ transitionOut: 'fadeOutUp' }, toast, 'buttonName');
+                }, true]]
+            });
+        });
+    },
 
-    if (typeof firebase === 'undefined') {
-        console.error('[FCM] Skipping initialization: Firebase SDK not loaded');
-        return;
-    }
+    stopLocally(clearBearer = true) {
+        this.stopped = true;
+        this.epoch++;
+        this.busy = false;
+        this.verifiedUid = null;
+        this.controllers.forEach(controller => { if (!controller.pushRegistration) controller.abort(); });
+        this.controllers.clear();
+        this.token = null;
+        this.generation = null;
+        this.registrationUid = null;
+        if (clearBearer) clearApiToken();
+        try { localStorage.removeItem('fcm_last_firebase_uid'); } catch (_) { /* No persisted identity required. */ }
+    },
 
-    // Check if user is authenticated: the in-memory API token is fetched via the session cookie
-    const apiToken = await FcmService.fetchApiToken();
+    // Call before native logout form.submit(), while the session still exists.
+    // Returns an honest cleanup result; callers must allow logout even on failure.
+    async deactivateDevice({ logout = false } = {}) {
+        if (this.deactivation) return this.deactivation;
+        const registration = this.token && this.generation ?
+            { token: this.token, generation: this.generation, uid: this.registrationUid } : this.registration();
+        const uid = this.pageUid;
+        const stop = { type: 'stop', origin: window.location.origin, installId: this.installId, uid,
+            eventId: `${Date.now()}-${Math.random()}` };
+        this.stopLocally(false);
+        const saved = this.savePreference({ ...this.preference(), enabled: false, stop });
+        try { localStorage.setItem(STOP_KEY, JSON.stringify(stop)); } catch (_) { /* Channel fallback. */ }
+        try { this.channel?.postMessage(stop); } catch (_) { /* Storage fallback. */ }
+        this.render('stopping');
+        this.deactivation = (async () => {
+            let server = false;
+            let sdk = false;
+            let authenticated = false;
+            // Give an in-flight POST time to return its generation and revoke it
+            // before deleting the SDK subscription. Late receipts also self-clean.
+            try { if (this.pendingPost) await this.bounded(this.pendingPost, 3500); }
+            catch (_) { /* Session logout remains the independent fallback. */ }
+            try {
+                const auth = await this.request('/apiv/_1/test-auth', 'GET', null, true);
+                authenticated = !!uid && auth?.firebase_uid === uid && !!this.installId &&
+                    this.installation() === this.installId;
+                // Stored registration UID only narrows cleanup; it never authenticates it.
+                if (authenticated && registration?.uid === uid &&
+                    registration?.token && typeof registration.generation === 'string') {
+                    const result = await this.bounded(this.request('/apiv/_1/fcm/token', 'DELETE', {
+                        token: registration.token, generation: registration.generation
+                    }, true), 3500);
+                    server = result?.success === true;
+                }
+            } catch (_) { /* Logout must not wait indefinitely for the server. */ }
+            try {
+                if (authenticated && this.messaging) sdk = await this.bounded(this.messaging.deleteToken(), 1500) === true;
+            } catch (_) { /* Report incomplete cleanup below. */ }
+            try {
+                const notifications = await this.bounded(this.swRegistration?.getNotifications() || Promise.resolve([]), 500);
+                notifications.forEach(notification => notification.close());
+            } catch (_) { /* Already delivered OS messages cannot always be retracted. */ }
+            this.token = null;
+            this.verifiedUid = null;
+            clearApiToken();
+            const success = server && sdk && saved;
+            const stored = this.registration();
+            if (stored?.uid === uid && stored?.generation === registration?.generation) this.saveRegistration(null);
+            // Stay stopped if opt-out cannot survive reload; explicit settings remain safe.
+            if (!logout && saved) this.stopped = false;
+            this.render('disabled', success ? null : 'Turned off locally. Server cleanup could not be confirmed; device alerts may still arrive. Check browser notification settings.');
+            return { success, server, sdk };
+        })();
+        try { return await this.deactivation; }
+        finally { this.deactivation = null; }
+    },
 
-    if (apiToken) {
-        // Delay initialization to ensure Firebase is ready
-        setTimeout(() => {
-            FcmService.init();
-        }, 1000);
-    } else {
-    }
-});
+    async logout(form) {
+        if (!form || form.dataset.pushSubmitting) return;
+        form.dataset.pushSubmitting = 'true';
+        try {
+            const result = await this.bounded(this.deactivateDevice({ logout: true }), 6000);
+            if (!result.success) this.logoutWarning();
+        } catch (_) { this.logoutWarning(); }
+        finally { HTMLFormElement.prototype.submit.call(form); }
+    },
 
-// Make FcmService available globally
-window.FcmService = FcmService;
+    logoutWarning() {
+        const message = 'Device notification cleanup could not be confirmed. Logging out anyway; queued alerts may still arrive. Use browser notification settings to block alerts.';
+        this.render('disabled', message);
+        if (typeof iziToast !== 'undefined') iziToast.warning({ title: 'Logout', message, timeout: 5000 });
+    },
 
-// Global debug function to show current FCM info
-window.showFcmInfo = function() {
-
-    return {
-        token: FcmService.token,
-        domain: window.location.origin,
-        device: FcmService.getDeviceInfo(),
-        swActive: !!navigator.serviceWorker.controller
-    };
+    deleteToken() { return this.deactivateDevice({ logout: true }); },
+    getDeviceInfo() { return this.ios() ? 'iOS / iPadOS' : /Android/.test(navigator.userAgent) ? 'Android' : 'Desktop browser'; }
 };
 
+window.FcmService = FcmService;
+document.addEventListener('DOMContentLoaded', () => FcmService.init());

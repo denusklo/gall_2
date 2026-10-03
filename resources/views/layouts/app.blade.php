@@ -16,9 +16,13 @@
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="icon" sizes="32x32" href="/favicon.ico">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#3490dc">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
 
     {{-- Use mix() helper for both HMR and production builds --}}
     <link href="{{ mix('css/app.css') }}" rel="stylesheet">
+    @include('layouts.navigation-styles')
 
     <!-- Fonts -->
     <link rel="dns-prefetch" href="//fonts.gstatic.com">
@@ -44,9 +48,6 @@
             measurementId: "{{ config('services.firebase.measurement_id') }}",
             vapidKey: "{{ config('services.firebase.vapid_key') }}"
         };
-
-        // Debug: Log Firebase config
-        console.log('Firebase Config loaded:', window.FIREBASE_CONFIG);
 
         // Check if config is valid
         if (!window.FIREBASE_CONFIG.apiKey || window.FIREBASE_CONFIG.apiKey === '') {
@@ -122,7 +123,7 @@
                         <!-- Notification Bell (for authenticated users) -->
                         @if (session()->has('verified_user_id') || Auth::check())
                             <li class="nav-item dropdown">
-                                <a id="notificationBell" class="nav-link position-relative" href="#" role="button" data-toggle="dropdown" aria-label="{{ __('Notifications') }}" aria-haspopup="true" aria-expanded="false">
+                                <a id="notificationBell" data-auth-uid="{{ Auth::user()?->firebase_uid ?? session('verified_user_id', '') }}" class="nav-link position-relative" href="#" role="button" data-toggle="dropdown" aria-label="{{ __('Notifications') }}" aria-haspopup="true" aria-expanded="false">
                                     <i class="fas fa-bell" style="font-size: 1.25rem;"></i>
                                     <span id="notificationBadge" class="badge badge-danger badge-pill position-absolute" style="top: 0; right: -5px; display: none;">0</span>
                                 </a>
@@ -139,6 +140,7 @@
                                             <p class="mb-0 mt-2">Loading...</p>
                                         </div>
                                     </div>
+                                    @include('partials.device-notifications')
                                 </div>
                             </li>
                         @endif
@@ -165,10 +167,10 @@
                                         </a>
                                         <div class="dropdown-divider"></div>
                                         <a class="dropdown-item" href="#"
-                                            onclick="event.preventDefault(); document.getElementById('logout-form-fb').submit();">
+                                            onclick="event.preventDefault(); var form = document.getElementById('logout-form-fb'); try { if (window.FcmService) { window.FcmService.logout(form); } else { form.submit(); } } catch (_) { form.submit(); }">
                                             <i class="fas fa-sign-out-alt mr-2"></i>{{ __('Logout') }}
                                         </a>
-                                        <form id="logout-form-fb" action="{{ route('logout') }}" method="POST" class="d-none">
+                                        <form id="logout-form-fb" action="{{ route('logout') }}" method="POST" class="d-none" onsubmit="if (window.FcmService) { event.preventDefault(); try { window.FcmService.logout(this); } catch (_) { this.submit(); } }">
                                             @csrf
                                         </form>
                                     </div>
@@ -193,11 +195,11 @@
                                     @endif
 
                                     <a class="dropdown-item" href="#"
-                                        onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+                                        onclick="event.preventDefault(); var form = document.getElementById('logout-form'); try { if (window.FcmService) { window.FcmService.logout(form); } else { form.submit(); } } catch (_) { form.submit(); }">
                                         <i class="fas fa-sign-out-alt mr-2"></i>{{ __('Logout') }}
                                     </a>
 
-                                    <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
+                                    <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none" onsubmit="if (window.FcmService) { event.preventDefault(); try { window.FcmService.logout(this); } catch (_) { this.submit(); } }">
                                         @csrf
                                     </form>
                                 </div>

@@ -1,101 +1,43 @@
-/**
- * Firebase Cloud Messaging Service Worker
- * This file handles background push notifications
- */
+// Own clicks before Firebase installs its listener, including its FCM_MSG envelope.
+// Payload URLs are deliberately ignored. Authentication remains the page's job.
+self.addEventListener('notificationclick', event => {
+    event.stopImmediatePropagation();
+    event.notification.close();
+    event.waitUntil((async () => {
+        const target = new URL('/images', self.location.origin);
+        const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        const sameOrigin = windows.filter(client => {
+            try { return new URL(client.url).origin === target.origin; }
+            catch (_) { return false; }
+        });
+        const existing = sameOrigin.find(client => {
+            const url = new URL(client.url);
+            return url.pathname === target.pathname && !url.search && !url.hash;
+        });
+        if (existing) {
+            try { return await existing.focus(); }
+            catch (_) { /* The matching tab may have closed after matchAll. */ }
+        }
+        const client = sameOrigin.find(client => typeof client.navigate === 'function');
+        if (client) {
+            try {
+                const navigated = await client.navigate(target.href);
+                if (navigated) return await navigated.focus();
+            } catch (_) { /* A closed tab may no longer be navigable. */ }
+        }
+        return self.clients.openWindow(target.href);
+    })());
+});
 
-// First, load the config
 importScripts('/fcm-config.js');
-
-// Import Firebase scripts in service worker
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
 
-// Initialize Firebase with the loaded config
-if (self.FIREBASE_CONFIG && !firebase.apps.length) {
-    firebase.initializeApp(self.FIREBASE_CONFIG);
-}
+if (self.FIREBASE_CONFIG && !firebase.apps.length) firebase.initializeApp(self.FIREBASE_CONFIG);
+// Firebase displays notification payloads once. Data-only messages need no display.
+// Do not add onBackgroundMessage/showNotification here: that duplicates SDK display.
+firebase.messaging();
 
-// Retrieve an instance of Firebase Messaging
-const messaging = firebase.messaging();
-
-// Handle background messages
-messaging.onBackgroundMessage(function(payload) {
-    console.log('[FCM SW] ==================================');
-    console.log('[FCM SW] Received background message!');
-    console.log('[FCM SW] Payload:', payload);
-    console.log('[FCM SW] Notification:', payload.notification);
-    console.log('[FCM SW] Data:', payload.data);
-    console.log('[FCM SW] ==================================');
-
-    const notification = payload.notification;
-    const notificationTitle = notification.title || 'Notification';
-    const notificationOptions = {
-        body: notification.body || '',
-        icon: notification.icon || '/favicon.ico',
-        badge: notification.badge || '/favicon.ico',
-        tag: payload.data?.type || 'default',
-        data: payload.data || {}
-    };
-
-    // Show the notification
-    console.log('[FCM SW] Showing notification:', notificationTitle);
-    return self.registration.showNotification(notificationTitle, notificationOptions);
-});
-
-// Handle notification click
-self.addEventListener('notificationclick', function(event) {
-    console.log('[FCM SW] Notification clicked:', event);
-
-    event.notification.close();
-
-    const data = event.notification.data || {};
-    // The /requests pages were removed; every notification opens the image gallery.
-    const url = '/images';
-
-    // Open the app and navigate to the appropriate page
-    event.waitUntil(
-        clients.matchAll({ type: 'window' }).then(function(clientList) {
-            // Check if there's already a window open
-            for (let i = 0; i < clientList.length; i++) {
-                const client = clientList[i];
-                // Focus the window if it's already open
-                if (client.url.includes(url) || client.url === 'https://gallery_2.localhost.dev/') {
-                    return client.focus();
-                }
-            }
-            // If no window is open, open a new one
-            if (clients.openWindow) {
-                return clients.openWindow(url);
-            }
-        })
-    );
-});
-
-// ========================================
-// INSTALL & ACTIVATE EVENTS
-// ========================================
-
-self.addEventListener('install', function(event) {
-    console.log('[FCM SW] Service Worker installing...');
-    self.skipWaiting();
-});
-
-self.addEventListener('activate', function(event) {
-    console.log('[FCM SW] Service Worker activating...');
-    event.waitUntil(
-        Promise.all([
-            self.clients.claim(),
-            caches.keys().then(cacheNames => {
-                return Promise.all(
-                    cacheNames.map(cacheName => {
-                        if (!cacheName.includes('firebase-messaging') &&
-                            !cacheName.includes('workbox')) {
-                            console.log('[FCM SW] Deleting old cache:', cacheName);
-                            return caches.delete(cacheName);
-                        }
-                    })
-                );
-            })
-        ])
-    );
-});
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+// Online only: no fetch handler and no ownership of other applications' caches.
