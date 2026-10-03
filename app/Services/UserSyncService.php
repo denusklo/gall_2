@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
-use Kreait\Firebase\Auth;
+use Kreait\Firebase\Auth\UserRecord;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 
@@ -26,6 +26,13 @@ class UserSyncService
      */
     public function syncFirebaseToMysql(string $firebaseUid, string $idToken, array $firebaseUser = []): User
     {
+        $record = $this->firebaseAuth->getUser($firebaseUid);
+        if ($record->uid !== $firebaseUid || $record->disabled || !$record->email) {
+            throw new \RuntimeException('Invalid Firebase identity.');
+        }
+        $firebaseUser['email'] = $record->email;
+        $firebaseUser['emailVerified'] = $record->emailVerified;
+
         // Check if user already exists by firebase_uid
         $user = User::where('firebase_uid', $firebaseUid)->first();
 
@@ -53,6 +60,8 @@ class UserSyncService
             $user->firebase_id_token = $idToken;
             $user->auth_provider = $user->auth_provider === 'sanctum' ? 'both' : 'firebase';
             $user->save();
+            $this->mirrorEmailVerification($firebaseUid, $record);
+            $user->refresh();
 
             Log::info('Updated existing MySQL user with Firebase data', [
                 'user_id' => $user->id,
@@ -70,8 +79,11 @@ class UserSyncService
             'firebase_uid' => $firebaseUid,
             'firebase_id_token' => $idToken,
             'auth_provider' => 'firebase',
-            'email_verified_at' => ($firebaseUser['emailVerified'] ?? false) ? now() : null,
+            'email_verified_at' => null,
         ]);
+
+        $this->mirrorEmailVerification($firebaseUid, $record);
+        $user->refresh();
 
         Log::info('Created new MySQL user from Firebase', [
             'user_id' => $user->id,
@@ -102,6 +114,8 @@ class UserSyncService
                 $user->firebase_refresh_token = $refreshToken;
                 $user->auth_provider = $user->auth_provider === 'firebase' ? 'both' : 'sanctum';
                 $user->save();
+                $this->mirrorEmailVerification($user->firebase_uid, $this->firebaseAuth->getUser($user->firebase_uid));
+                $user->refresh();
 
                 return [
                     'firebase_uid' => $user->firebase_uid,
@@ -121,7 +135,7 @@ class UserSyncService
         try {
             $userProperties = [
                 'email' => $user->email,
-                'emailVerified' => !is_null($user->email_verified_at),
+                'emailVerified' => false,
                 'password' => $password,
                 'displayName' => $user->name,
                 'disabled' => false,
@@ -140,6 +154,8 @@ class UserSyncService
             $user->firebase_refresh_token = $refreshToken;
             $user->auth_provider = $user->auth_provider === 'firebase' ? 'both' : 'sanctum';
             $user->save();
+            $this->mirrorEmailVerification($firebaseUser->uid, $firebaseUser);
+            $user->refresh();
 
             Log::info('Created Firebase user from MySQL', [
                 'user_id' => $user->id,
@@ -158,6 +174,32 @@ class UserSyncService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Mirror only an existing UID link. Never relink by email or change local email.
+     * The timestamp records the first observation, not when the link was clicked.
+     */
+    public function mirrorEmailVerification(string $uid, UserRecord $record): string
+    {
+        if ($record->uid !== $uid || $record->disabled || !$record->email) {
+            throw new \RuntimeException('Invalid Firebase identity.');
+        }
+
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($uid, $record) {
+            $user = User::where('firebase_uid', $uid)->lockForUpdate()->first();
+            if (!$user) {
+                return 'not_linked';
+            }
+            // Exact comparison deliberately fails closed on ambiguous email changes.
+            $matches = $user->email === $record->email;
+            $timestamp = $matches && $record->emailVerified ? ($user->email_verified_at ?? now()) : null;
+            $user->email_verified_at = $timestamp;
+            if ($user->isDirty('email_verified_at')) {
+                $user->save();
+            }
+            return $matches ? 'synced' : 'email_mismatch';
+        });
     }
 
     /**

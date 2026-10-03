@@ -80,12 +80,41 @@ class FirebaseUserController extends Controller
             // Owner/admin profiles are protected from other actors (read-only gate here; update() re-checks under the lock).
             app(\App\Services\RoleChangeService::class)
                 ->assertMayViewProfile(session()->get('verified_user_id'), $uid);
-            $user = $auth->getUser($uid);
+            try {
+                $user = $auth->getUser($uid);
+            } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                // A provider outage is unknown, not evidence of an unverified email.
+                // Only the linked self may see the local fallback; no profile save.
+                if ($uid !== session()->get('verified_user_id') || $request->user()?->firebase_uid !== $uid) {
+                    throw $e;
+                }
+                return view('user.edit', [
+                    'name' => $request->user()->name, 'phone' => null, 'uid' => $uid,
+                    'email' => $request->user()->email, 'emailVerified' => null,
+                    'emailSelf' => true, 'profileUnavailable' => true,
+                ]);
+            }
 
             $name = $user->displayName;
             $phone = $user->phoneNumber;
-            return view('user.edit', compact('name', 'phone', 'uid'));
+            $email = $user->email;
+            $emailVerified = $user->emailVerified;
+            $emailSelf = $uid === session()->get('verified_user_id');
+            return view('user.edit', compact('name', 'phone', 'uid', 'email', 'emailVerified', 'emailSelf'));
         } catch (\App\Exceptions\RoleChangeException $e) {
+            // The read gate also needs Firebase. Its outage must not grant profile
+            // access: expose only the linked self's local, disabled fallback.
+            // firebase.auth still rejects requests when token verification fails.
+            if ($e->httpStatus === 503 && $uid === session()->get('verified_user_id')
+                && $request->user()?->firebase_uid === $uid) {
+                return view('user.edit', [
+                    'name' => $request->user()->name, 'phone' => null, 'uid' => $uid,
+                    'email' => $request->user()->email, 'emailVerified' => null,
+                    'emailSelf' => true, 'profileUnavailable' => true,
+                ]);
+            }
             if ($e->httpStatus === 403) {
                 abort(403, $e->getMessage());
             }
@@ -93,6 +122,18 @@ class FirebaseUserController extends Controller
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
             return redirect()->route('login')->with('error', $e->getMessage());
         }
+    }
+
+    // These web actions use strict JSON self-auth in the service, not the legacy
+    // firebase.auth middleware which redirects and permits Firebase-only sessions.
+    public function sendEmailVerification(Request $request)
+    {
+        return app(\App\Services\EmailVerificationService::class)->handle($request, true);
+    }
+
+    public function emailVerificationStatus(Request $request)
+    {
+        return app(\App\Services\EmailVerificationService::class)->handle($request, false);
     }
 
     public function update(Request $request)

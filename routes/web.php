@@ -106,6 +106,13 @@ Route::get('/fcm-sw-keep-alive', function() {
       ->header('Content-Type', 'application/json');
 })->name('fcm.sw.keepalive');
 
+// Web session + CSRF still apply. The service requires BOTH linked identities
+// and a revocation-checked token, returning JSON 401 rather than a login redirect.
+Route::post('user/email-verification/send', [FirebaseUserController::class, 'sendEmailVerification'])
+    ->name('user.email-verification.send');
+Route::post('user/email-verification/status', [FirebaseUserController::class, 'emailVerificationStatus'])
+    ->name('user.email-verification.status');
+
 Route::middleware( ['firebase.auth'] )->group(function() {
 
     Route::get('users', [FirebaseUserController::class, 'index'])
