@@ -122,6 +122,6 @@ Route::middleware( ['firebase.auth'] )->group(function() {
 
 Route::middleware(['firebase.auth', 'firebase.admin'])->prefix('admin')->group(function() {
     Route::get('/users', [FirebaseAdminController::class, 'manageUsers'])->name('admin.users');
-    Route::post('/users/{uid}/make-admin', [FirebaseAdminController::class, 'makeAdmin'])->name('admin.make-admin');
-    Route::post('/users/{uid}/remove-admin', [FirebaseAdminController::class, 'removeAdmin'])->name('admin.remove-admin');
+    Route::post('/users/{uid}/make-admin', [FirebaseAdminController::class, 'makeAdmin'])->middleware('firebase.owner')->name('admin.make-admin');
+    Route::post('/users/{uid}/remove-admin', [FirebaseAdminController::class, 'removeAdmin'])->middleware('firebase.owner')->name('admin.remove-admin');
 });

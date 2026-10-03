@@ -19,19 +19,27 @@
                         </thead>
                         <tbody>
                             @foreach ($users as $user)
-                                @if ($user->uid !== session()->get('verified_user_id'))
-                                    <tr>
-                                        <td>{{ $user->displayName ?? 'No name' }}</td>
-                                        <td>{{ $user->email }}</td>
-                                        <td>
-                                            @if (isset($user->customClaims['admin']) && $user->customClaims['admin'] === true)
-                                                <span class="badge bg-success">Admin</span>
-                                            @else
-                                                <span class="badge badge-info">Regular User</span>
-                                            @endif
-                                        </td>
-                                        <td>
-                                            @if (isset($user->customClaims['admin']) && $user->customClaims['admin'] === true)
+                                @php
+                                    $targetIsOwner = ($user->customClaims['owner'] ?? null) === true;
+                                    $targetIsAdmin = ($user->customClaims['admin'] ?? null) === true;
+                                @endphp
+                                <tr>
+                                    <td>{{ $user->displayName ?? 'No name' }}</td>
+                                    <td>{{ $user->email }}</td>
+                                    <td>
+                                        @if ($targetIsOwner)
+                                            <span class="badge bg-dark">Owner</span>
+                                        @elseif ($targetIsAdmin)
+                                            <span class="badge bg-success">Admin</span>
+                                        @else
+                                            <span class="badge badge-info">User</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if ($targetIsOwner)
+                                            <span class="text-muted">Protected Owner</span>
+                                        @elseif ($viewerIsOwner && $user->uid !== $viewerUid)
+                                            @if ($targetIsAdmin)
                                                 <form action="{{ route('admin.remove-admin', $user->uid) }}" method="POST" class="d-inline">
                                                     @csrf
                                                     <button type="submit" class="btn btn-sm btn-warning">Remove Admin</button>
@@ -42,9 +50,9 @@
                                                     <button type="submit" class="btn btn-sm btn-primary">Make Admin</button>
                                                 </form>
                                             @endif
-                                        </td>
-                                    </tr>
-                                @endif
+                                        @endif
+                                    </td>
+                                </tr>
                             @endforeach
                         </tbody>
                     </table>
@@ -60,7 +68,7 @@
     @if(session('success'))
         iziToast.success({
             title: 'Success',
-            message: '{{ session('success') }}',
+            message: @json(session('success')),
             position: 'topRight',
             timeout: 3000
         });
@@ -69,7 +77,7 @@
     @if(session('error'))
         iziToast.error({
             title: 'Error',
-            message: '{{ session('error') }}',
+            message: @json(session('error')),
             position: 'topRight',
             timeout: 3000
         });

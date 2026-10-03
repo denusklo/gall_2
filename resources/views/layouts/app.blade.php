@@ -78,22 +78,10 @@
                             @php
                                 $isAdmin = false;
 
-                                // Check for Firebase admin
-                                if (session()->has('verified_user_id')) {
-                                    try {
-                                        $uid = session()->get('verified_user_id');
-                                        $auth = app('firebase.auth');
-                                        $user = $auth->getUser($uid);
-                                        $customClaims = $user->customClaims ?? [];
-                                        $isAdmin = isset($customClaims['admin']) && $customClaims['admin'] === true;
-                                    } catch (\Exception $e) {
-                                        // Silently fail
-                                    }
-                                }
-
-                                // Check for native MySQL admin
-                                if (Auth::check() && !$isAdmin) {
-                                    $isAdmin = Auth::user()->is_admin == 1;
+                                // Roles only for an authenticated Firebase uid, via the shared authoritative helper.
+                                $uid = session()->get('verified_user_id') ?: (Auth::check() ? Auth::user()->firebase_uid : null);
+                                if ($uid) {
+                                    $isAdmin = app(\App\Services\FirebaseRoleService::class)->isAdmin($uid);
                                 }
                             @endphp
 
