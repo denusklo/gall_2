@@ -307,16 +307,10 @@ class FcmController extends Controller
     }
 
     /**
-     * Authoritative admin check: Firebase customClaims.admin === true. Any failure denies.
+     * Authoritative admin check (owner implies admin). Any failure denies.
      */
     protected function callerIsFirebaseAdmin(string $callerUid): bool
     {
-        try {
-            $claims = app('firebase.auth')->getUser($callerUid)->customClaims ?? [];
-            return is_array($claims) && ($claims['admin'] ?? null) === true;
-        } catch (\Throwable $e) {
-            Log::warning('[TEST NOTIFICATION] Admin claim check failed', ['error' => $e->getMessage()]);
-            return false;
-        }
+        return app(\App\Services\FirebaseRoleService::class)->isAdmin($callerUid);
     }
 }

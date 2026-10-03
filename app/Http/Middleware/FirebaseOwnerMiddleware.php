@@ -6,7 +6,7 @@ use App\Services\FirebaseRoleService;
 use Closure;
 use Illuminate\Http\Request;
 
-class FirebaseAdminMiddleware
+class FirebaseOwnerMiddleware
 {
     public function __construct(private FirebaseRoleService $roles)
     {
@@ -14,8 +14,9 @@ class FirebaseAdminMiddleware
 
     public function handle(Request $request, Closure $next)
     {
-        if (!$this->roles->isAdmin(session()->get('verified_user_id'))) {
-            return redirect()->route('home')->with('error', 'Access denied: Admin privileges required.');
+        // Actor is only ever the web-session-established uid.
+        if (!$this->roles->isOwner(session()->get('verified_user_id'))) {
+            abort(403, 'Owner privileges required.');
         }
 
         return $next($request);

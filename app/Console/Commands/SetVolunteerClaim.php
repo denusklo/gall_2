@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Kreait\Firebase\Auth;
 
 class SetVolunteerClaim extends Command
 {
@@ -44,39 +43,23 @@ class SetVolunteerClaim extends Command
         try {
             $auth = app('firebase.auth');
 
-            // Get the user by email
+            // Read-only lookup by email; the mutation itself is locked, refetched, merged and audited.
             $user = $auth->getUserByEmail($email);
 
-            // Get current custom claims
-            $currentClaims = $user->customClaims ?? [];
+            $this->info(($remove ? 'Removing' : 'Adding') . " volunteer claim " . ($remove ? 'from' : 'to') . " user: {$email}");
+            app(\App\Services\RoleChangeService::class)->setVolunteer($user->uid, !$remove);
 
-            if ($remove) {
-                // Remove volunteer claim
-                unset($currentClaims['volunteer']);
-                $action = 'removed from';
-                $this->info("Removing volunteer claim from user: {$email}");
-            } else {
-                // Add volunteer claim
-                $currentClaims['volunteer'] = true;
-                $action = 'added to';
-                $this->info("Adding volunteer claim to user: {$email}");
-            }
-
-            // Set the custom claims
-            $auth->setCustomUserClaims($user->uid, $currentClaims);
-
-            $this->info("Volunteer claim successfully {$action} user: {$email}");
+            $this->info('Volunteer claim successfully ' . ($remove ? 'removed from' : 'added to') . " user: {$email}");
             $this->info("User UID: {$user->uid}");
-
-            // Show current claims
-            $this->line("\nCurrent custom claims:");
-            $this->line(json_encode($currentClaims, JSON_PRETTY_PRINT));
-
+            $this->line('Volunteer flag: ' . ($remove ? 'false' : 'true'));
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
             $this->error("User not found with email: {$email}");
             return 1;
+        } catch (\App\Exceptions\RoleChangeException $e) {
+            $this->error($e->getMessage() . ($e->partial ? ' [PARTIAL/UNKNOWN: verify claims manually]' : ''));
+            return 1;
         } catch (\Exception $e) {
-            $this->error("Error: " . $e->getMessage());
+            $this->error('Error: lookup failed (' . get_class($e) . ').');
             return 1;
         }
 

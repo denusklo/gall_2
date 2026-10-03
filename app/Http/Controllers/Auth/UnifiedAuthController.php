@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Services\UserSyncService;
+use App\Services\RoleChangeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -170,6 +171,7 @@ class UnifiedAuthController extends Controller
         $password = $request->password;
 
         // Step 1: Create Firebase user
+        $firebaseUser = null;
         try {
             $userProperties = [
                 'email' => $email,
@@ -195,9 +197,14 @@ class UnifiedAuthController extends Controller
                 'exception_class' => get_class($e),
             ]);
 
+            $error = 'Registration failed. Please try again.';
+            if ($firebaseUser !== null) {
+                $error .= $this->cleanupFailedRegistration($firebaseUser->uid);
+            }
+
             return redirect()->route('register')
                 ->withInput()
-                ->with('error', 'Registration failed. Please try again.');
+                ->with('error', $error);
         }
 
         // Step 2: Create MySQL user
@@ -221,19 +228,11 @@ class UnifiedAuthController extends Controller
                 'exception_class' => get_class($e),
             ]);
 
-            // Rollback Firebase user creation
-            try {
-                $this->firebaseAuth->deleteUser($firebaseUser->uid);
-            } catch (\Exception $rollbackError) {
-                Log::error('Failed to rollback Firebase user', [
-                    'firebase_uid' => $firebaseUser->uid,
-                    'exception_class' => get_class($rollbackError),
-                ]);
-            }
+            $cleanupMessage = $this->cleanupFailedRegistration($firebaseUser->uid);
 
             return redirect()->route('register')
                 ->withInput()
-                ->with('error', 'Registration failed. Please try again.');
+                ->with('error', 'Registration failed. Please try again.' . $cleanupMessage);
         }
 
         // Step 3: Log the user in
@@ -248,6 +247,21 @@ class UnifiedAuthController extends Controller
         session(['api_token' => $sanctumToken]);
 
         return redirect()->route('home')->with('success', 'Registration successful');
+    }
+
+    /** Keep registration failure intact; cleanup failure never becomes success. */
+    private function cleanupFailedRegistration(string $createdUid): string
+    {
+        try {
+            app(RoleChangeService::class)->cleanupFailedRegistration($createdUid);
+            return '';
+        } catch (\Throwable $e) {
+            Log::error('Registration cleanup could not be confirmed; manual review required', [
+                'firebase_uid' => $createdUid,
+                'exception_class' => get_class($e),
+            ]);
+            return ' Automatic account cleanup could not be confirmed. Manual account review and cleanup are required before retrying.';
+        }
     }
 
     /**

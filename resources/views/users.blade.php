@@ -9,6 +9,15 @@
             <div class="card">
                 <div class="card-header">Registered User List</div>
                 <div class="card-body">
+                    @if ($loadError ?? null)
+                        <div class="alert alert-danger" role="alert">{{ $loadError }}</div>
+                    @endif
+                    @if (session('success'))
+                        <div class="alert alert-success" role="status">{{ session('success') }}</div>
+                    @endif
+                    @if (session('error'))
+                        <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
+                    @endif
                     <div class="table-responsive">
                         <table class="table table-bordered table-striped">
                         <thead>
@@ -24,25 +33,43 @@
                         </thead>
                         <tbody>
                             @foreach ($users as $user)
+                                @php
+                                    $tOwner = ($user->customClaims['owner'] ?? null) === true;
+                                    $tAdmin = ($user->customClaims['admin'] ?? null) === true;
+                                    $isSelf = $user->uid === $viewerUid;
+                                    // Server enforces this too; the UI just mirrors it.
+                                    $canEdit = $isSelf || (!$tOwner && (!$tAdmin || $viewerIsOwner));
+                                    $canDelete = !$tOwner && ($isSelf || !$tAdmin || $viewerIsOwner);
+                                @endphp
                                 <tr>
                                     <td>{{$loop->iteration}}</td>
                                     <td>{{$user->displayName}}</td>
                                     <td>{{$user->phoneNumber}}</td>
                                     <td>{{$user->email}}</td>
                                     <td>
-                                        <form action="{{route('user.edit')}}" method="POST">
-                                            @csrf
-                                            <input type="hidden" name='uid' value="{{$user->uid}}">
-                                            <button type="submit" class="btn btn-primary btn-sm">Edit</button>
-                                        </form>
+                                        @if ($canEdit)
+                                            <form action="{{route('user.edit')}}" method="POST">
+                                                @csrf
+                                                <input type="hidden" name='uid' value="{{$user->uid}}">
+                                                <button type="submit" class="btn btn-primary btn-sm">Edit</button>
+                                            </form>
+                                        @else
+                                            <button type="button" class="btn btn-secondary btn-sm" disabled title="Protected account">{{ $tOwner ? 'Protected Owner' : 'Protected Admin' }}</button>
+                                        @endif
                                     </td>
                                     <td>
-                                        <form action="{{route('user.delete')}}" method="POST">
-                                            @method('delete')
-                                            {{ csrf_field() }}
-                                            <input type="hidden" name='uid' value="{{$user->uid}}">
-                                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                                        </form>
+                                        @if ($tOwner)
+                                            <button type="button" class="btn btn-secondary btn-sm" disabled title="Owner accounts cannot be deleted">Protected Owner</button>
+                                        @elseif (!$canDelete)
+                                            <button type="button" class="btn btn-secondary btn-sm" disabled title="Only an owner can delete an admin">Protected Admin</button>
+                                        @else
+                                            <form action="{{route('user.delete')}}" method="POST">
+                                                @method('delete')
+                                                {{ csrf_field() }}
+                                                <input type="hidden" name='uid' value="{{$user->uid}}">
+                                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                            </form>
+                                        @endif
                                     </td>
                                     <td>
                                         <button type="button"
@@ -65,7 +92,11 @@
         <div class="col-md-3">
             <div class="card">
                 <div class="card-body">
-                    There are total {{ $totalRequests }} {{ (int) $totalRequests === 1 ? 'request' : 'requests' }}.
+                    @if ($loadError ?? null)
+                        Request count is unavailable.
+                    @else
+                        There are total {{ $totalRequests }} {{ (int) $totalRequests === 1 ? 'request' : 'requests' }}.
+                    @endif
                 </div>
             </div>
         </div>
