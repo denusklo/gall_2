@@ -49,6 +49,17 @@ return [
             'lock_connection' => null,
         ],
 
+        // Dedicated shared limiter; do not replace with a per-instance store.
+        'email_verification' => [
+            'driver' => 'database',
+            'table' => 'email_verification_cache',
+            'lock_table' => 'email_verification_cache_locks',
+            'connection' => null,
+            'lock_connection' => null,
+            'prefix' => 'email_verification:',
+            'lock_lottery' => [0, 100],
+        ],
+
         'file' => [
             'driver' => 'file',
             'path' => env('CACHE_PATH', storage_path('framework/cache/data')), 
