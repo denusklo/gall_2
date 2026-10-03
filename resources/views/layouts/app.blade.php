@@ -128,22 +128,29 @@
                                     <span id="notificationBadge" class="badge badge-danger badge-pill position-absolute" style="top: 0; right: -5px; display: none;">0</span>
                                 </a>
                                 <div id="notificationDropdown" class="dropdown-menu dropdown-menu-right" aria-labelledby="notificationBell">
-                                    <div class="dropdown-header d-flex justify-content-between align-items-center">
-                                        <span><strong>Notifications</strong></span>
-                                        <button id="markAllAsRead" class="btn btn-sm btn-link p-0">Mark all as read</button>
-                                    </div>
-                                    <div class="dropdown-divider"></div>
-                                    <div id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                                        <!-- Notifications will be rendered here -->
-                                        <div class="dropdown-item text-center text-muted py-3">
-                                            <i class="fas fa-spinner fa-spin"></i>
-                                            <p class="mb-0 mt-2">Loading...</p>
+                                    <div id="notificationTray">
+                                        <div class="notification-tray-header dropdown-header d-flex justify-content-between align-items-center">
+                                            <span><strong id="notificationTrayTitle">{{ __('Notifications') }}</strong></span>
+                                            <button type="button" class="notification-modal-close" data-dismiss="modal" aria-label="{{ __('Close notifications') }}">
+                                                <span aria-hidden="true">&times;</span>
+                                            </button>
+                                            <button id="markAllAsRead" type="button" class="btn btn-sm btn-link p-0">{{ __('Mark all as read') }}</button>
                                         </div>
+                                        <div class="notification-tray-body">
+                                            <div class="dropdown-divider"></div>
+                                            <div id="notificationList" style="max-height: 400px; overflow-y: auto;">
+                                                <!-- Notifications will be rendered here -->
+                                                <div class="dropdown-item text-center text-muted py-3">
+                                                    <i class="fas fa-spinner fa-spin"></i>
+                                                    <p class="mb-0 mt-2">Loading...</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <nav class="notification-footer d-flex justify-content-between border-top px-2" aria-label="Notification links">
+                                            <a class="btn btn-link" href="{{ route('notifications.index') }}">{{ __('View all') }}</a>
+                                            <a class="btn btn-link" href="{{ route('settings.notifications') }}">{{ __('Settings') }}</a>
+                                        </nav>
                                     </div>
-                                    <nav class="notification-footer d-flex justify-content-between border-top px-2" aria-label="Notification links">
-                                        <a class="btn btn-link" href="{{ route('notifications.index') }}">{{ __('View all') }}</a>
-                                        <a class="btn btn-link" href="{{ route('settings.notifications') }}">{{ __('Settings') }}</a>
-                                    </nav>
                                 </div>
                             </li>
                         @endif
@@ -217,6 +224,15 @@
             @yield('content')
         </main>
     </div>
+
+    @if(session()->has('verified_user_id') || Auth::check())
+        {{-- Outside the navbar/app so their layout cannot trap the modal or its backdrop. --}}
+        <div id="notificationModal" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="notificationTrayTitle" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content"></div>
+            </div>
+        </div>
+    @endif
 
     {{-- Bootstrap Bundle (jQuery, Popper.js, Bootstrap, iziToast) --}}
     <script src="{{ mix('js/bootstrap-bundle.js') }}"></script>

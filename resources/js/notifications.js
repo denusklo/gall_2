@@ -23,7 +23,15 @@ const NotificationService = {
         const dropdown = document.getElementById('notificationDropdown');
         const $ = window.jQuery;
         if (bell && dropdown && $) {
-            $(bell.parentElement).on('show.bs.dropdown', () => this.fetchNotifications())
+            this.setupTrayPresentation(bell, dropdown, $);
+            $(bell.parentElement).on('show.bs.dropdown', e => {
+                if (this.trayPresentation && (this.trayPresentation.media.matches || this.trayPresentation.phase !== 'closed')) {
+                    e.preventDefault();
+                    return;
+                }
+                document.querySelectorAll('.account-dropdown [data-toggle="dropdown"]').forEach(account => $(account).dropdown('hide'));
+                this.fetchNotifications();
+            })
                 .on('hide.bs.dropdown', e => {
                     const native = e.clickEvent && e.clickEvent.originalEvent;
                     if (!native) return;
@@ -57,6 +65,123 @@ const NotificationService = {
                 this.fetchHistory();
             });
         });
+    },
+    setupTrayPresentation(bell, dropdown, $) {
+        const modal = document.getElementById('notificationModal');
+        const tray = document.getElementById('notificationTray');
+        if (!modal || !tray || !$.fn.modal) return;
+        const media = window.matchMedia('(max-width: 767.98px)');
+        const presentation = this.trayPresentation = { media, modal, phase: 'closed', closeRequested: false, account: null };
+        const accounts = Array.from(document.querySelectorAll('.account-dropdown [data-toggle="dropdown"]'));
+        const restoreFocus = () => this.trayFocusFallback()?.focus({ preventScroll: true });
+        const sync = () => {
+            // Never move focused tray content while Bootstrap is showing/hiding it.
+            if (presentation.phase !== 'closed') return;
+            $(bell).dropdown('hide');
+            (media.matches ? modal.querySelector('.modal-content') : dropdown).append(tray);
+            bell.setAttribute('aria-haspopup', media.matches ? 'dialog' : 'menu');
+            bell.setAttribute('aria-expanded', 'false');
+            if (media.matches) bell.removeAttribute('data-toggle');
+            else bell.setAttribute('data-toggle', 'dropdown');
+        };
+        const close = () => {
+            presentation.closeRequested = true;
+            if (presentation.phase === 'open') $(modal).modal('hide');
+            // Bootstrap ignores hide during its opening transition. shown completes it.
+        };
+        $(modal).modal({ show: false });
+        $(modal).on('show.bs.modal', e => {
+            if (!media.matches || presentation.phase !== 'closed') { e.preventDefault(); return; }
+            sync();
+            accounts.forEach(account => $(account).dropdown('hide'));
+            presentation.phase = 'opening';
+            presentation.closeRequested = false;
+            bell.setAttribute('aria-expanded', 'true');
+            this.fetchNotifications();
+        }).on('shown.bs.modal', () => {
+            presentation.phase = 'open';
+            if (presentation.closeRequested) $(modal).modal('hide');
+            else modal.querySelector('.notification-modal-close').focus({ preventScroll: true });
+        }).on('hide.bs.modal', () => {
+            presentation.phase = 'closing';
+            bell.setAttribute('aria-expanded', 'false');
+        }).on('hidden.bs.modal', () => {
+            presentation.phase = 'closed';
+            presentation.closeRequested = false;
+            sync();
+            // Bootstrap has already removed this modal's backdrop and body scroll lock.
+            restoreFocus();
+            const account = presentation.account;
+            presentation.account = null;
+            if (account?.getClientRects().length) { $(account).dropdown('show'); account.focus({ preventScroll: true }); }
+        });
+        $(modal).on('keydown', e => {
+            if (e.key !== 'Tab') return;
+            // Bootstrap 4 enforces focus inside the modal, but does not wrap Tab at its edges.
+            const buttons = Array.from(modal.querySelectorAll('button:not(:disabled), a[href]'))
+                .filter(node => node.getClientRects().length);
+            const first = buttons[0], last = buttons[buttons.length - 1];
+            if (e.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
+                e.preventDefault(); last?.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault(); first?.focus();
+            }
+        });
+        $(modal).on('click', '.notification-footer a, .notification-modal-close', close);
+        $(modal).on('click', e => {
+            if (presentation.phase !== 'opening' || e.target !== modal) return;
+            // Bootstrap 4 ignores hide while opening. Defer genuine backdrop clicks,
+            // but let its own handler consume the dialog-to-backdrop drag ignore flag.
+            if (!$(modal).data('bs.modal')._ignoreBackdropClick) close();
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && presentation.phase === 'opening') close();
+        });
+        bell.addEventListener('click', e => {
+            if (!media.matches && presentation.phase === 'closed') return;
+            // Stop Bootstrap's delegated dropdown data API only for the mobile presentation.
+            e.preventDefault();
+            e.stopPropagation();
+            if (presentation.phase === 'closed') $(modal).modal('show');
+            else close();
+        }, true);
+        bell.addEventListener('keydown', e => {
+            if (!media.matches || e.key !== ' ') return;
+            e.preventDefault();
+            bell.click();
+        });
+        accounts.forEach(account => $(account.parentElement).on('show.bs.dropdown', e => {
+            if (presentation.phase !== 'closed') {
+                e.preventDefault();
+                presentation.account = account;
+                close();
+            } else $(bell).dropdown('hide');
+        }));
+        const change = () => {
+            if (presentation.phase !== 'closed') close();
+            else {
+                const focused = tray.contains(document.activeElement) || document.activeElement === bell;
+                sync();
+                if (focused) restoreFocus();
+            }
+        };
+        media.addEventListener('change', change);
+        let landscape = window.innerWidth > window.innerHeight;
+        window.addEventListener('resize', () => {
+            const next = window.innerWidth > window.innerHeight;
+            if (next !== landscape) { landscape = next; change(); }
+        });
+        window.addEventListener('orientationchange', change);
+        sync();
+    },
+    isTrayOpen() {
+        return document.getElementById('notificationModal')?.classList.contains('show') ||
+            document.getElementById('notificationDropdown')?.classList.contains('show');
+    },
+    trayFocusFallback() {
+        if (this.isTrayOpen()) return document.getElementById('markAllAsRead');
+        const bell = document.getElementById('notificationBell');
+        return bell?.getClientRects().length ? bell : document.querySelector('.navbar-toggler');
     },
     async authenticatedFetch(url, options = {}) {
         // Include token acquisition in the deadline, not just the API request.
@@ -234,8 +359,8 @@ const NotificationService = {
                 box.append(el('p', 'mb-1', message));
                 if (this.countError && !this.mutationError) box.append(this.button('Retry', () => this.fetchUnreadCount()));
             }
-            if (focused) {
-                const fallback = document.getElementById(id === 'historyList' ? 'historyFilter-all' : 'notificationBell');
+            if (focused && (id === 'historyList' || this.trayPresentation?.phase !== 'closing')) {
+                const fallback = id === 'historyList' ? document.getElementById('historyFilter-all') : this.trayFocusFallback();
                 (box.querySelector('button') || fallback)?.focus({ preventScroll: true });
             }
         });
@@ -316,13 +441,12 @@ const NotificationService = {
             fragment.append(item);
         });
         container.replaceChildren(fragment);
-        if (focused) {
+        if (focused && (history || this.trayPresentation?.phase !== 'closing')) {
             const items = Array.from(container.querySelectorAll('.notification-item'));
             const item = items.find(n => n.dataset.id === oldId) || items[Math.min(oldIndex, items.length - 1)];
             let target = item?.querySelector(`[data-notification-action="${action || 'read'}"]`) || item?.querySelector('button') || container.querySelector('button');
             if (!target) target = document.getElementById(history ? 'historyFilter-all' : 'markAllAsRead');
-            const dropdown = document.getElementById('notificationDropdown');
-            if (!history && !dropdown?.classList.contains('show')) target = document.getElementById('notificationBell');
+            if (!history && !this.isTrayOpen()) target = this.trayFocusFallback();
             target?.focus({ preventScroll: true });
         }
     },
