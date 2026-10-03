@@ -127,7 +127,7 @@
                                     <i class="fas fa-bell" style="font-size: 1.25rem;"></i>
                                     <span id="notificationBadge" class="badge badge-danger badge-pill position-absolute" style="top: 0; right: -5px; display: none;">0</span>
                                 </a>
-                                <div id="notificationDropdown" class="dropdown-menu dropdown-menu-right" aria-labelledby="notificationBell" style="min-width: 350px; max-width: 400px;">
+                                <div id="notificationDropdown" class="dropdown-menu dropdown-menu-right" aria-labelledby="notificationBell">
                                     <div class="dropdown-header d-flex justify-content-between align-items-center">
                                         <span><strong>Notifications</strong></span>
                                         <button id="markAllAsRead" class="btn btn-sm btn-link p-0">Mark all as read</button>
@@ -140,7 +140,10 @@
                                             <p class="mb-0 mt-2">Loading...</p>
                                         </div>
                                     </div>
-                                    @include('partials.device-notifications')
+                                    <nav class="notification-footer d-flex justify-content-between border-top px-2" aria-label="Notification links">
+                                        <a class="btn btn-link" href="{{ route('notifications.index') }}">{{ __('View all') }}</a>
+                                        <a class="btn btn-link" href="{{ route('settings.notifications') }}">{{ __('Settings') }}</a>
+                                    </nav>
                                 </div>
                             </li>
                         @endif
@@ -155,7 +158,7 @@
                                         <a class="nav-link" href="{{ route('register') }}">{{ __('Register') }}</a>
                                     </li>
                             @else
-                                <li class="nav-item dropdown">
+                                <li class="nav-item dropdown account-dropdown">
                                     <a id="firebaseUserDropdown" class="nav-link dropdown-toggle" href="#" role="button"
                                         data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                                         <span>{{ session()->get('displayName') }}</span>
@@ -177,10 +180,10 @@
                                 </li>
                             @endif
                         @else
-                            <li class="nav-item dropdown">
+                            <li class="nav-item dropdown account-dropdown">
                                 <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button"
                                     data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
-                                    {{ Auth::user()->name }}
+                                    <span>{{ Auth::user()->name }}</span>
                                     @if(Auth::user()->hasDualAuth())
                                         <i class="fas fa-sync ml-1 text-success" title="Dual Auth"></i>
                                     @endif

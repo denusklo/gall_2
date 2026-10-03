@@ -32,6 +32,9 @@ Route::middleware(['auth'])->group(function () {
     // Images route - displays individual images (what used to be called "galleries")
     Route::get('/images', [App\Http\Controllers\GalleryController::class, 'index'])->name('images.index');
 
+    Route::view('/notifications', 'notifications.index')->name('notifications.index');
+    Route::view('/settings/notifications', 'notifications.settings')->name('settings.notifications');
+
     // Storage settings route
     Route::get('/settings/storage', [App\Http\Controllers\SettingsController::class, 'storage'])->name('settings.storage');
 

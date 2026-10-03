@@ -1,6 +1,13 @@
 <style>
     .navbar-toggler { min-width: 44px; min-height: 44px; }
     .navbar .nav-link, .navbar .dropdown-item { min-height: 44px; overflow-wrap: anywhere; white-space: normal; }
+    .navbar .nav-link { display: flex; align-items: center; }
+    .navbar .account-dropdown .dropdown-item { display: flex; align-items: center; }
+    .navbar .account-dropdown .nav-link > span { min-width: 0; }
+    .navbar .account-dropdown i,
+    .navbar .account-dropdown .dropdown-toggle::after { flex-shrink: 0; }
+    .navbar .notification-footer .btn { min-height: 44px; display: inline-flex; align-items: center; }
+    .navbar #markAllAsRead { min-height: 44px; }
     .navbar.navbar-light .navbar-nav .nav-link { color: #526070; }
     .navbar.navbar-light .navbar-nav .nav-link:hover, .navbar.navbar-light .navbar-nav .nav-link:focus { color: #263445; }
     .navbar .btn-link { color: #17629b; }

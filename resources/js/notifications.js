@@ -1,385 +1,343 @@
-/**
- * Notifications Dropdown
- * Standalone notification system for navbar
- */
-
 import { getApiToken, refreshApiToken } from './apiTokenRefresh';
 
+const el = (tag, className, text) => {
+    const node = document.createElement(tag);
+    node.className = className || '';
+    if (text !== undefined) node.textContent = text;
+    return node;
+};
+const queryState = () => ({ items: [], loading: false, error: '', request: 0, controller: null });
 const NotificationService = {
-    notifications: [],
-    unreadCount: 0,
+    notifications: [], unreadCount: 0,
+    tray: queryState(),
+    history: { ...queryState(), page: 1, lastPage: 1, total: 0, unread: false },
+    countRequest: 0, countController: null, countError: '', mutationError: '', mutating: false,
 
-    async init() {
-        // Wait a bit for FCM to refresh token if needed
-        await this.ensureValidToken();
-
+    init() {
         this.setupEventListeners();
-        this.fetchNotifications();
-        this.fetchUnreadCount();
-        // Polling removed - relying on real-time FCM updates instead
+        return this.fetchNotifications();
     },
-
-    async ensureValidToken() {
-        const token = await getApiToken();
-        if (!token) return;
-
-        // Quick test to see if token is valid
-        try {
-            const response = await fetch('/apiv/_1/test-auth', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json'
-                }
-            });
-
-            if (response.status === 401) {
-                await this.refreshToken();
-            }
-        } catch (error) {
-            console.error('[Notifications] Token validation error:', error);
-        }
-    },
-
-    async refreshToken() {
-        return refreshApiToken();
-    },
-
+    refreshToken() { return refreshApiToken(); },
     setupEventListeners() {
-        // Open/close, outside-click, Escape, aria-expanded and mutual exclusion with
-        // the account menu are all owned by Bootstrap's dropdown plugin
-        // (#notificationBell carries data-toggle="dropdown"). No custom show-class handling.
-        const bellButton = document.getElementById('notificationBell');
+        const bell = document.getElementById('notificationBell');
         const dropdown = document.getElementById('notificationDropdown');
         const $ = window.jQuery;
-
-        if (bellButton && dropdown && $) {
-            $(bellButton.parentElement)
-                .on('show.bs.dropdown', () => this.fetchNotifications())
-                // Bootstrap closes a menu on any click inside it; keep the tray open only for
-                // real (native) clicks that started inside it. composedPath() is captured at
-                // dispatch, so it survives a re-render detaching the target. Synthetic clicks
-                // (Bootstrap's Escape handling triggers one on the menu) carry no native
-                // event and must not veto.
-                .on('hide.bs.dropdown', (e) => {
+        if (bell && dropdown && $) {
+            $(bell.parentElement).on('show.bs.dropdown', () => this.fetchNotifications())
+                .on('hide.bs.dropdown', e => {
                     const native = e.clickEvent && e.clickEvent.originalEvent;
                     if (!native) return;
                     const path = typeof native.composedPath === 'function' ? native.composedPath() : [];
-                    const inside = path.length ? path.includes(dropdown) : dropdown.contains(native.target);
-                    if (inside) e.preventDefault();
+                    // Links deliberately close/navigate; action clicks keep the tray open.
+                    if (native.target.closest && native.target.closest('a')) return;
+                    if (path.length ? path.includes(dropdown) : dropdown.contains(native.target)) e.preventDefault();
                 });
-
-            // Escape while focus is on <body> (e.g. the focused control was re-rendered away)
-            // never reaches Bootstrap's handlers; close through the plugin and restore focus.
-            document.addEventListener('keydown', (e) => {
+            document.addEventListener('keydown', e => {
                 if (e.key !== 'Escape' || !dropdown.classList.contains('show')) return;
-                if (bellButton.parentElement.contains(document.activeElement)) return; // Bootstrap handles it
-                $(bellButton).dropdown('toggle'); // open -> Bootstrap clears menus (resets aria-expanded)
-                bellButton.focus();
+                if (bell.parentElement.contains(document.activeElement)) return;
+                $(bell).dropdown('toggle');
+                bell.focus();
             });
         }
-
-        // Mark all as read button
-        const markAllBtn = document.getElementById('markAllAsRead');
-        if (markAllBtn) {
-            markAllBtn.addEventListener('click', () => this.markAllAsRead());
-        }
+        ['markAllAsRead', 'historyMarkAll'].forEach(id => {
+            document.getElementById(id)?.addEventListener('click', () => this.markAllAsRead());
+        });
+        ['all', 'unread'].forEach(filter => {
+            document.getElementById(`historyFilter-${filter}`)?.addEventListener('click', () => {
+                this.history.unread = filter === 'unread';
+                this.history.page = 1;
+                this.fetchHistory();
+            });
+        });
+        ['previous', 'next'].forEach(direction => {
+            document.getElementById(`history-${direction}`)?.addEventListener('click', () => {
+                if (this.history.loading || this.mutating) return;
+                this.history.page = Math.max(1, Math.min(this.history.lastPage,
+                    this.history.page + (direction === 'next' ? 1 : -1)));
+                this.fetchHistory();
+            });
+        });
     },
-
     async authenticatedFetch(url, options = {}) {
-        const token = await getApiToken();
-        const headers = {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            ...options.headers
+        // Include token acquisition in the deadline, not just the API request.
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        options.signal?.addEventListener('abort', abort, { once: true });
+        if (options.signal?.aborted) abort();
+        let timer;
+        const deadline = new Promise((_, reject) => {
+            timer = setTimeout(() => { abort(); reject(new Error('timeout')); }, 15000);
+        });
+        const request = async () => {
+            let token = await getApiToken();
+            if (typeof token !== 'string' || !token.trim()) throw new Error('authentication');
+            const send = () => {
+                if (controller.signal.aborted) throw new Error('aborted');
+                return fetch(url, { ...options, signal: controller.signal, credentials: 'same-origin',
+                    headers: { ...options.headers, Accept: 'application/json', Authorization: `Bearer ${token}` } });
+            };
+            let response = await send();
+            if (response.status === 401) {
+                token = await this.refreshToken();
+                if (typeof token !== 'string' || !token.trim()) throw new Error('authentication');
+                response = await send();
+            }
+            if (!response.ok) throw new Error('request');
+            // JSON parsing also belongs inside the deadline.
+            return response.json();
         };
-
-        let response = await fetch(url, { ...options, headers });
-
-        // If 401, refresh the token (shared with FCM) and retry once
-        if (response.status === 401) {
-            const newToken = await this.refreshToken();
-            if (newToken) {
-                headers['Authorization'] = `Bearer ${newToken}`;
-                response = await fetch(url, { ...options, headers });
-            }
+        try { return await Promise.race([request(), deadline]); }
+        finally {
+            clearTimeout(timer);
+            options.signal?.removeEventListener('abort', abort);
         }
-
-        return response;
     },
-
-    async fetchNotifications() {
+    fetchNotifications() {
+        if (this.mutating) return Promise.resolve();
+        const tasks = [this.fetchList(this.tray, false), this.fetchUnreadCount()];
+        if (document.getElementById('notificationHistory')) tasks.push(this.fetchHistory());
+        return Promise.all(tasks);
+    },
+    fetchHistory() {
+        if (this.mutating) { this.renderHistoryControls(); return Promise.resolve(); }
+        return this.fetchList(this.history, true);
+    },
+    async fetchList(state, history) {
+        state.controller?.abort();
+        const request = ++state.request;
+        state.controller = new AbortController();
+        state.loading = true;
+        state.error = '';
+        this.renderList(state, history);
+        const page = history ? state.page : 1;
+        const unread = history && state.unread;
         try {
-            const response = await this.authenticatedFetch('/apiv/_1/notifications?per_page=10');
-
-            if (response.ok) {
-                const data = await response.json();
-                this.notifications = data.data;
-                this.renderNotifications();
+            const data = await this.authenticatedFetch(`/apiv/_1/notifications?per_page=${history ? 15 : 5}&page=${page}&unread_only=${unread ? 1 : 0}`,
+                { signal: state.controller.signal });
+            if (request !== state.request) return;
+            if (!Array.isArray(data.data) || !Number.isInteger(data.current_page) ||
+                !Number.isInteger(data.last_page) || data.last_page < 1 ||
+                !Number.isInteger(data.total) || data.total < 0 ||
+                data.data.some(n => !n || !Number.isInteger(n.id))) throw new Error('format');
+            if (history && page > data.last_page) {
+                state.page = data.last_page;
+                return this.fetchHistory();
             }
+            state.items = data.data;
+            if (history) Object.assign(state, { page: data.current_page, lastPage: data.last_page, total: data.total });
+            else this.notifications = state.items;
         } catch (error) {
-            console.error('Failed to fetch notifications:', error);
+            if (request !== state.request) return;
+            state.error = 'Could not load notifications. Try again.';
+        } finally {
+            if (request === state.request) {
+                state.loading = false;
+                this.renderList(state, history);
+            }
         }
     },
-
     async fetchUnreadCount() {
+        if (this.mutating) return;
+        this.countController?.abort();
+        const request = ++this.countRequest;
+        this.countController = new AbortController();
         try {
-            const response = await this.authenticatedFetch('/apiv/_1/notifications/unread-count');
-
-            if (response.ok) {
-                const data = await response.json();
-                this.unreadCount = data.count || 0;
-                this.updateBadge();
-            }
-        } catch (error) {
-            console.error('Failed to fetch unread count:', error);
-        }
-    },
-
-    async markAsRead(id) {
-        try {
-            const response = await this.authenticatedFetch(`/apiv/_1/notifications/${id}/read`, {
-                method: 'PUT'
-            });
-
-            if (response.ok) {
-                // Update locally instead of refetching
-                this.markAsReadLocally(id);
-            }
-        } catch (error) {
-            console.error('Failed to mark notification as read:', error);
-        }
-    },
-
-    markAsReadLocally(id) {
-        const notification = this.notifications.find(n => n.id === id);
-        if (notification) {
-            const wasUnread = !notification.read_at;
-            notification.read_at = new Date().toISOString();
-            if (wasUnread) {
-                this.unreadCount = Math.max(0, this.unreadCount - 1);
-            }
-            this.renderNotifications();
+            const data = await this.authenticatedFetch('/apiv/_1/notifications/unread-count', { signal: this.countController.signal });
+            if (request !== this.countRequest) return;
+            if (!Number.isInteger(data.count) || data.count < 0) throw new Error('format');
+            this.unreadCount = data.count;
+            this.countError = '';
             this.updateBadge();
+        } catch (error) {
+            if (request !== this.countRequest) return;
+            this.countError = 'Could not refresh the unread count. Try again.';
+        } finally {
+            if (request === this.countRequest) this.renderErrors();
         }
     },
-
-    async markAllAsRead() {
+    invalidateReads() {
+        [this.tray, this.history].forEach(state => {
+            ++state.request;
+            state.controller?.abort();
+            state.loading = false;
+        });
+        ++this.countRequest;
+        this.countController?.abort();
+    },
+    markAsRead(id) { return this.mutate(`/apiv/_1/notifications/${id}/read`, 'PUT', id); },
+    deleteNotification(id) { return this.mutate(`/apiv/_1/notifications/${id}`, 'DELETE', id); },
+    markAllAsRead() { return this.mutate('/apiv/_1/notifications/read-all', 'PUT'); },
+    async mutate(url, method, id) {
+        if (this.mutating) return;
+        this.mutating = true;
+        this.mutationError = '';
+        this.invalidateReads();
+        this.setMutationControls();
+        this.renderErrors();
         try {
-            const response = await this.authenticatedFetch('/apiv/_1/notifications/read-all', {
-                method: 'PUT'
-            });
-
-            if (response.ok) {
-                // Update locally instead of refetching
-                this.notifications.forEach(n => {
-                    if (!n.read_at) n.read_at = new Date().toISOString();
+            const data = await this.authenticatedFetch(url, { method });
+            if (data.success !== true) throw new Error('format');
+            const known = [...this.tray.items, ...this.history.items].find(n => n.id === id);
+            if (id !== undefined && known && !known.read_at) {
+                this.unreadCount = Math.max(0, this.unreadCount - 1);
+                this.updateBadge();
+            }
+            // Local accepted changes remain visible even if the reconciliation GET fails.
+            [this.tray, this.history].forEach(state => {
+                state.items = state.items.filter(n => !(method === 'DELETE' && n.id === id));
+                state.items.forEach(n => {
+                    if (method === 'PUT' && (id === undefined || n.id === id)) n.read_at = new Date().toISOString();
                 });
-                this.unreadCount = 0;
-                this.updateBadge();
-                this.renderNotifications();
-            }
-        } catch (error) {
-            console.error('Failed to mark all as read:', error);
-        }
-    },
-
-    async deleteNotification(id) {
-        try {
-            const response = await this.authenticatedFetch(`/apiv/_1/notifications/${id}`, {
-                method: 'DELETE'
+                if (state === this.history && state.unread) state.items = state.items.filter(n => !n.read_at);
             });
-
-            if (response.ok) {
-                // Update locally instead of refetching
-                const notif = this.notifications.find(n => n.id === id);
-                const wasUnread = !notif?.read_at;
-                this.notifications = this.notifications.filter(n => n.id !== id);
-                if (wasUnread) {
-                    this.unreadCount = Math.max(0, this.unreadCount - 1);
-                }
-                this.updateBadge();
-                this.renderNotifications();
-            }
+            this.notifications = this.tray.items;
+            if (id === undefined) { this.unreadCount = 0; this.updateBadge(); }
         } catch (error) {
-            console.error('Failed to delete notification:', error);
+            this.mutationError = 'Could not update the notification. Retry the action.';
+        } finally {
+            this.mutating = false;
+            this.renderList(this.tray, false);
+            this.renderList(this.history, true);
+            this.setMutationControls();
+            this.renderErrors();
+            await this.fetchNotifications();
         }
     },
-
+    setMutationControls() {
+        document.querySelectorAll('[data-notification-action], #markAllAsRead, #historyMarkAll')
+            .forEach(button => { button.setAttribute('aria-disabled', String(this.mutating)); });
+        this.renderHistoryControls();
+    },
     updateBadge() {
         const badge = document.getElementById('notificationBadge');
         if (badge) {
-            if (this.unreadCount > 0) {
-                badge.textContent = this.unreadCount > 99 ? '99+' : this.unreadCount;
-                badge.style.display = 'inline-block';
-            } else {
-                badge.style.display = 'none';
-            }
+            badge.textContent = this.unreadCount > 99 ? '99+' : String(this.unreadCount);
+            badge.style.display = this.unreadCount > 0 ? 'inline-block' : 'none';
         }
     },
-
-    renderNotifications() {
-        const container = document.getElementById('notificationList');
-        if (!container) return;
-
-        // Remember focus only if it was on a control inside the list (re-render detaches it).
-        const active = document.activeElement;
-        let focusIdx = -1;
-        if (active && container.contains(active)) {
-            const item = active.closest('.notification-item');
-            focusIdx = item ? Array.prototype.indexOf.call(container.children, item) : 0;
-        }
-        const restoreFocus = () => {
-            if (focusIdx < 0) return;
-            const items = container.querySelectorAll('.notification-item');
-            let target = items.length ? items[Math.min(focusIdx, items.length - 1)].querySelector('button') : null;
-            if (!target) target = document.getElementById('markAllAsRead');
-            const tray = document.getElementById('notificationDropdown');
-            if (!target || !tray || !tray.classList.contains('show')) target = document.getElementById('notificationBell');
-            if (target) target.focus();
-        };
-
-        if (this.notifications.length === 0) {
-            container.innerHTML = `
-                <div class="dropdown-item text-center text-muted py-3">
-                    <i class="fas fa-inbox"></i>
-                    <p class="mb-0 mt-2">No notifications</p>
-                </div>
-            `;
-            restoreFocus();
-            return;
-        }
-
-        const el = (tag, className, text) => {
-            const node = document.createElement(tag);
-            if (className) node.className = className;
-            if (text !== undefined) node.textContent = text;
-            return node;
-        };
-
-        const iconButton = (className, title, iconClass, onClick) => {
-            const btn = el('button', className);
-            btn.type = 'button';
-            btn.title = title;
-            btn.setAttribute('aria-label', title);
-            btn.appendChild(el('i', iconClass));
-            btn.addEventListener('click', () => onClick());
-            return btn;
-        };
-
-        const fragment = document.createDocumentFragment();
-
-        this.notifications.forEach(notif => {
-            const isUnread = !notif.read_at;
-
-            const item = el('div', `notification-item ${isUnread ? 'unread' : ''}`);
-            item.dataset.id = String(notif.id);
-            item.style.cssText = `cursor: pointer; border-left: 3px solid ${this.getTypeColor(notif.type)}; padding: 0.75rem 1rem;`;
-
-            const row = el('div', 'd-flex justify-content-between align-items-start');
-
-            const content = el('div', 'flex-grow-1');
-            content.addEventListener('click', () => this.handleNotificationClick(notif.id, notif.data?.type || ''));
-
-            const titleRow = el('div', 'd-flex align-items-center mb-1');
-            const icon = el('i', `${this.getTypeIcon(notif.type)} mr-2`);
-            icon.style.color = 'inherit';
-            const title = el('strong', '', notif.title ?? '');
-            title.style.color = '#212529';
-            titleRow.append(icon, title);
-
-            const body = el('p', 'mb-1 small', notif.body || '');
-            body.style.color = '#6c757d';
-
-            const time = el('small', '', this.getTimeAgo(notif.created_at));
-            time.style.color = '#6c757d';
-
-            content.append(titleRow, body, time);
-
-            const actions = el('div', 'd-flex align-items-center');
-            if (isUnread) {
-                actions.appendChild(iconButton('btn btn-sm btn-link text-success p-0 ml-2', 'Mark as read', 'fas fa-check',
-                    () => this.markAsRead(notif.id)));
+    renderErrors() {
+        ['notificationList', 'historyList'].forEach(id => {
+            const list = document.getElementById(id);
+            if (!list) return;
+            let box = document.getElementById(`${id}-errors`);
+            if (!box) {
+                box = el('div', 'px-3 py-2 small');
+                box.id = `${id}-errors`;
+                box.setAttribute('role', 'status');
+                list.before(box);
             }
-            actions.appendChild(iconButton('btn btn-sm btn-link text-muted p-0 ml-2', 'Delete', 'fas fa-times',
-                () => this.deleteNotification(notif.id)));
-
-            row.append(content, actions);
-            item.appendChild(row);
-            fragment.appendChild(item);
+            const focused = box.contains(document.activeElement);
+            box.replaceChildren();
+            const message = this.mutationError || this.countError;
+            box.hidden = !message;
+            if (message) {
+                box.append(el('p', 'mb-1', message));
+                if (this.countError && !this.mutationError) box.append(this.button('Retry', () => this.fetchUnreadCount()));
+            }
+            if (focused) {
+                const fallback = document.getElementById(id === 'historyList' ? 'historyFilter-all' : 'notificationBell');
+                (box.querySelector('button') || fallback)?.focus({ preventScroll: true });
+            }
         });
-
-        container.replaceChildren(fragment);
-        restoreFocus();
     },
-
-    handleNotificationClick(id, type) {
-        // Just mark as read without redirecting
-        this.markAsRead(id);
+    button(label, callback) {
+        const button = el('button', 'btn btn-sm btn-link', label);
+        button.type = 'button';
+        button.style.minHeight = '44px';
+        button.style.minWidth = '44px';
+        button.addEventListener('click', () => {
+            if (button.getAttribute('aria-disabled') !== 'true') callback();
+        });
+        return button;
     },
-
-    getTypeIcon(type) {
-        const icons = {
-            success: 'fas fa-check-circle text-success',
-            info: 'fas fa-info-circle text-info',
-            warning: 'fas fa-exclamation-triangle text-warning',
-            error: 'fas fa-times-circle text-danger'
-        };
-        return icons[type] || icons.info;
+    renderHistoryControls() {
+        if (!document.getElementById('notificationHistory')) return;
+        ['all', 'unread'].forEach(filter => {
+            const button = document.getElementById(`historyFilter-${filter}`);
+            const selected = this.history.unread === (filter === 'unread');
+            button.setAttribute('aria-pressed', String(selected));
+            button.classList.toggle('active', selected);
+        });
+        ['previous', 'next'].forEach(direction => {
+            const button = document.getElementById(`history-${direction}`);
+            const bound = direction === 'previous' ? this.history.page <= 1 : this.history.page >= this.history.lastPage;
+            const focused = document.activeElement === button;
+            button.disabled = bound;
+            button.setAttribute('aria-disabled', String(bound || this.history.loading || this.mutating));
+            if (focused && bound) document.getElementById('historyFilter-all').focus({ preventScroll: true });
+        });
+        document.getElementById('historyPage').textContent = `Page ${this.history.page} of ${this.history.lastPage}`;
     },
-
-    getTypeColor(type) {
-        const colors = {
-            success: '#28a745',
-            info: '#17a2b8',
-            warning: '#ffc107',
-            error: '#dc3545'
-        };
-        return colors[type] || colors.info;
-    },
-
-    getTimeAgo(dateString) {
-        const date = new Date(dateString);
-        const now = new Date();
-        const seconds = Math.floor((now - date) / 1000);
-
-        const intervals = {
-            year: 31536000,
-            month: 2592000,
-            week: 604800,
-            day: 86400,
-            hour: 3600,
-            minute: 60
-        };
-
-        for (const [unit, secondsInUnit] of Object.entries(intervals)) {
-            const interval = Math.floor(seconds / secondsInUnit);
-            if (interval >= 1) {
-                return interval === 1 ? `1 ${unit} ago` : `${interval} ${unit}s ago`;
-            }
+    renderNotifications() { this.renderList(this.tray, false); },
+    renderList(state, history) {
+        const container = document.getElementById(history ? 'historyList' : 'notificationList');
+        if (!container) return;
+        container.setAttribute('aria-busy', String(state.loading));
+        if (history) this.renderHistoryControls();
+        // Capture focus at render time, never when the asynchronous request starts.
+        const active = document.activeElement;
+        const focused = container.contains(active);
+        const oldItem = focused ? active.closest('.notification-item') : null;
+        const oldId = oldItem?.dataset.id;
+        const action = active?.dataset.notificationAction;
+        const oldIndex = oldItem ? Array.from(container.children).indexOf(oldItem) : 0;
+        const fragment = document.createDocumentFragment();
+        if (state.loading || state.error) {
+            const status = el('div', 'px-3 py-3 small', state.loading ? 'Loading notifications…' : state.error);
+            status.setAttribute('role', 'status');
+            if (state.error) status.append(this.button('Retry', () => history ? this.fetchHistory() : this.fetchNotifications()));
+            fragment.append(status);
         }
-
+        if (!state.loading && !state.error && !state.items.length) {
+            const empty = el('p', 'text-muted text-center p-3 mb-0', history && state.unread ? 'No unread notifications.' : 'No notifications yet.');
+            empty.setAttribute('role', 'status');
+            fragment.append(empty);
+        }
+        state.items.forEach(n => {
+            const item = el('div', `notification-item ${n.read_at ? '' : 'unread'}`);
+            item.dataset.id = String(n.id);
+            item.style.cssText = 'padding: .75rem 1rem; border-bottom: 1px solid rgba(128,128,128,.2);';
+            const content = el('div', 'notification-copy');
+            content.style.cssText = 'min-width:0; overflow-wrap:anywhere;';
+            content.append(el('strong', 'd-block', n.title ?? ''), el('p', 'small mb-1', n.body ?? ''),
+                el('small', 'text-muted', this.getTimeAgo(n.created_at)));
+            const actions = el('div', 'd-flex flex-wrap mt-2');
+            const add = (label, kind, callback) => {
+                const button = this.button(label, callback);
+                button.classList.add('mr-2', 'mb-1');
+                button.dataset.notificationAction = kind;
+                button.setAttribute('aria-disabled', String(this.mutating));
+                button.setAttribute('aria-label', `${label}: ${n.title ?? 'notification'}`);
+                actions.append(button);
+            };
+            if (!n.read_at) add('Mark as read', 'read', () => this.markAsRead(n.id));
+            add('Delete', 'delete', () => this.deleteNotification(n.id));
+            item.append(content, actions);
+            fragment.append(item);
+        });
+        container.replaceChildren(fragment);
+        if (focused) {
+            const items = Array.from(container.querySelectorAll('.notification-item'));
+            const item = items.find(n => n.dataset.id === oldId) || items[Math.min(oldIndex, items.length - 1)];
+            let target = item?.querySelector(`[data-notification-action="${action || 'read'}"]`) || item?.querySelector('button') || container.querySelector('button');
+            if (!target) target = document.getElementById(history ? 'historyFilter-all' : 'markAllAsRead');
+            const dropdown = document.getElementById('notificationDropdown');
+            if (!history && !dropdown?.classList.contains('show')) target = document.getElementById('notificationBell');
+            target?.focus({ preventScroll: true });
+        }
+    },
+    getTimeAgo(value) {
+        const seconds = Math.floor((Date.now() - new Date(value).getTime()) / 1000);
+        if (!Number.isFinite(seconds)) return '';
+        for (const [unit, size] of Object.entries({ year: 31536000, month: 2592000, week: 604800, day: 86400, hour: 3600, minute: 60 })) {
+            const amount = Math.floor(seconds / size);
+            if (amount >= 1) return `${amount} ${unit}${amount === 1 ? '' : 's'} ago`;
+        }
         return 'Just now';
     }
 };
 
-// Initialize once the DOM is ready. If no token is stored yet (first visit),
-// fetch one through the shared refresh so the dropdown works without a reload.
-async function startNotifications() {
-    const token = await getApiToken();
-    if (!token) return;
-
-    try {
-        await NotificationService.init();
-    } catch (err) {
-        console.error('[Notifications] Initialization failed:', err);
-    }
-}
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startNotifications);
-} else {
-    startNotifications();
-}
-
-// Make it globally available
 window.NotificationService = NotificationService;
+const startNotifications = () => NotificationService.init();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startNotifications);
+else startNotifications();
