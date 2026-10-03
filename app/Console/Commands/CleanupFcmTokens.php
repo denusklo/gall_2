@@ -14,8 +14,8 @@ class CleanupFcmTokens extends Command
      */
     protected $signature = 'fcm:cleanup
                             {--uid= : Specific Firebase UID to clean up (optional, default: all users)}
-                            {--duplicates : Clean up duplicate tokens per domain (keeps most recent)}
-                            {--old : Clean up old tokens without domain information}
+                            {--duplicates : Compatibility no-op; distinct devices are preserved}
+                            {--old : Compatibility no-op; legacy records require reenrollment}
                             {--invalid : Validate and remove invalid tokens}
                             {--all : Run all cleanup operations}';
 
@@ -116,24 +116,17 @@ class CleanupFcmTokens extends Command
      */
     protected function cleanInvalidTokens($uid, $tokenService, $notificationService)
     {
-        $tokens = $tokenService->getUserTokens($uid);
+        $registrations = $tokenService->getRegistrations($uid, app(\App\Services\PushOrigin::class)->current());
         $cleaned = 0;
-
-        if (empty($tokens)) {
-            return ['cleaned' => 0];
-        }
-
-        $this->line("Found " . count($tokens) . " tokens to validate...");
-
-        foreach ($tokens as $token) {
-            $this->line("Validating token: " . substr($token, 0, 20) . "...");
-
-            if (!$notificationService->validateToken($token)) {
-                $this->line("  <fg=red>Token is invalid, removing...</>");
-                $tokenService->removeToken($uid, $token);
-                $cleaned++;
-            } else {
-                $this->line("  <fg=green>Token is valid</>");
+        $this->line('Found ' . count($registrations) . ' registrations to validate...');
+        foreach ($registrations as $row) {
+            $status = $notificationService->validationStatus($row['token']);
+            if ($status === 'unregistered') {
+                if ($tokenService->removeToken($uid, $row['token'], $row['generation'])) {
+                    $cleaned++;
+                }
+            } elseif ($status === 'unknown') {
+                $this->warn('Validation unavailable; registration preserved.');
             }
         }
 

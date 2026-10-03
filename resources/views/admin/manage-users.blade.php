@@ -1,13 +1,20 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container">
+<style>
+    /* Bootstrap 4's success/info backgrounds need darker shades for small white text. */
+    #manage-users .badge-success { background-color: #21783a; }
+    #manage-users .badge-info { background-color: #117483; color: #fff; }
+    #manage-users .table-responsive:focus-visible { outline: 3px solid #17629b; outline-offset: 3px; }
+</style>
+<div class="container" id="manage-users">
     <div class="row justify-content-center">
         <div class="col-md-12">
             <div class="card">
                 <div class="card-header">Manage Users</div>
 
                 <div class="card-body">
+                    <div class="table-responsive" role="region" aria-label="User permissions" tabindex="0">
                     <table class="table table-bordered">
                         <thead>
                             <tr>
@@ -28,9 +35,9 @@
                                     <td>{{ $user->email }}</td>
                                     <td>
                                         @if ($targetIsOwner)
-                                            <span class="badge bg-dark">Owner</span>
+                                            <span class="badge badge-dark">Owner</span>
                                         @elseif ($targetIsAdmin)
-                                            <span class="badge bg-success">Admin</span>
+                                            <span class="badge badge-success">Admin</span>
                                         @else
                                             <span class="badge badge-info">User</span>
                                         @endif
@@ -56,6 +63,7 @@
                             @endforeach
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </div>
         </div>

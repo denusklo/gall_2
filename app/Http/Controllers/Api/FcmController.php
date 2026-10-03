@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\FcmTokenService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class FcmController extends Controller
 {
@@ -25,7 +24,7 @@ class FcmController extends Controller
     public function storeToken(Request $request)
     {
         $request->validate([
-            'token' => 'required|string',
+            'token' => 'required|string|max:4096',
             'device_info' => 'nullable|string|max:255',
             'domain' => 'nullable|string|max:255'
         ]);
@@ -42,21 +41,20 @@ class FcmController extends Controller
 
         $token = $request->input('token');
         $deviceInfo = $request->input('device_info');
-        $domain = $request->input('domain');
-
-        $result = $this->fcmTokenService->storeToken($uid, $token, $deviceInfo, $domain);
-
-        if ($result) {
-            return response()->json([
-                'success' => true,
-                'message' => 'FCM token registered successfully'
-            ]);
+        $origin = app(\App\Services\PushOrigin::class)->current();
+        $submitted = $request->input('domain');
+        if ($submitted !== null && app(\App\Services\PushOrigin::class)->normalize($submitted) !== $origin) {
+            return response()->json(['success' => false, 'message' => 'Push origin mismatch'], 422);
         }
-
+        $bearer = $this->bearer($request);
+        $result = $this->fcmTokenService->register($uid, $token, (int) $bearer->getKey(), $deviceInfo, $origin);
+        if (!$bearer->newQuery()->whereKey($bearer->getKey())->exists()) {
+            abort(401);
+        }
         return response()->json([
-            'success' => false,
-            'message' => 'Failed to register FCM token'
-        ], 500);
+            'success' => true, 'message' => 'FCM token registered successfully',
+            'generation' => $result['generation'],
+        ]);
     }
 
     /**
@@ -68,7 +66,8 @@ class FcmController extends Controller
     public function removeToken(Request $request)
     {
         $request->validate([
-            'token' => 'required|string'
+            'token' => 'required|string|max:4096',
+            'generation' => 'required|string|size:32',
         ]);
 
         $uid = $request->user()->firebase_uid;
@@ -80,7 +79,9 @@ class FcmController extends Controller
             ], 400);
         }
 
-        $result = $this->fcmTokenService->removeToken($uid, $request->input('token'));
+        $result = $this->fcmTokenService->removeForBearer(
+            $uid, $request->input('token'), $request->input('generation'), (int) $this->bearer($request)->getKey()
+        );
 
         if ($result) {
             return response()->json([
@@ -139,7 +140,7 @@ class FcmController extends Controller
         }
 
         $request->validate([
-            'token' => 'required|string',
+            'token' => 'required|string|max:4096',
             'title' => 'nullable|string|max:255',
             'body' => 'nullable|string|max:500'
         ]);
@@ -151,12 +152,22 @@ class FcmController extends Controller
         /** @var \App\Services\FcmNotificationService */
         $fcmNotification = app(\App\Services\FcmNotificationService::class);
 
-        $result = $fcmNotification->sendToToken($token, $title, $body);
+        $uid = $request->user()->firebase_uid;
+        if (!is_string($uid) || $uid === '') {
+            abort(403);
+        }
+        $origin = app(\App\Services\PushOrigin::class)->current();
+        $owned = array_filter($this->fcmTokenService->getRegistrations($uid, $origin),
+            fn ($row) => $row['token'] === $token);
+        if (!$owned) {
+            return response()->json(['success' => false, 'message' => 'Owned token required'], 403);
+        }
+        $result = $fcmNotification->sendToRegistration($uid, array_values($owned)[0], $title, $body);
 
         if ($result) {
             return response()->json([
                 'success' => true,
-                'message' => 'Test notification sent successfully'
+                'message' => 'Provider accepted the test notification'
             ]);
         }
 
@@ -208,107 +219,33 @@ class FcmController extends Controller
         $title = $request->input('title', 'Test Notification');
         $body = $request->input('body', 'This is a test notification from the admin panel');
 
-        // Get current domain - use X-Forwarded-Host header if available (Vercel/LB)
-        // Otherwise fall back to request host
-        $host = $request->header('X-Forwarded-Host') ?? $request->getHost();
-        $scheme = $request->header('X-Forwarded-Proto') ?? ($request->secure() ? 'https' : 'http');
-        $domain = $scheme . '://' . $host;
-
-        // Log domain detection for debugging
-        Log::info('[TEST NOTIFICATION] Domain detection', [
-            'x_forwarded_host' => $request->header('X-Forwarded-Host'),
-            'x_forwarded_proto' => $request->header('X-Forwarded-Proto'),
-            'request_host' => $request->getHost(),
-            'request_secure' => $request->secure(),
-            'detected_host' => $host,
-            'detected_scheme' => $scheme,
-            'final_domain' => $domain
-        ]);
-
-        /** @var \App\Services\FcmTokenService */
-        $fcmTokenService = app(FcmTokenService::class);
-
-        // Get all tokens for this user
-        $allTokens = $fcmTokenService->getUserTokens($firebaseUid);
-
-        // Get tokens filtered by domain
-        $domainTokens = $fcmTokenService->getUserTokensForDomain($firebaseUid, $domain);
-
-        Log::info('[TEST NOTIFICATION] Preparing to send', [
-            'firebase_uid' => $firebaseUid,
-            'request_domain' => $domain,
-            'all_tokens_count' => count($allTokens),
-            'domain_tokens_count' => count($domainTokens),
-            'all_tokens' => array_map(function($token) {
-                return substr($token, 0, 30) . '...';
-            }, $allTokens),
-            'domain_tokens' => array_map(function($token) {
-                return substr($token, 0, 30) . '...';
-            }, $domainTokens)
-        ]);
-
-        // Check if user has any tokens for this domain
-        if (empty($domainTokens)) {
-            $message = empty($allTokens)
-                ? 'User has no registered FCM tokens on any domain'
-                : "User has " . count($allTokens) . " token(s) but none registered for domain: {$domain}";
-
-            Log::warning('[TEST NOTIFICATION] No tokens for domain', [
-                'firebase_uid' => $firebaseUid,
-                'domain' => $domain,
-                'all_tokens_count' => count($allTokens)
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => $message,
-                'has_tokens' => false,
-                'all_tokens_count' => count($allTokens),
-                'domain_tokens_count' => 0,
-                'requested_domain' => $domain
-            ], 400);
-        }
-
-        /** @var \App\Services\FcmNotificationService */
-        $fcmNotification = app(\App\Services\FcmNotificationService::class);
-
-        $result = $fcmNotification->sendToUser(
-            $firebaseUid,
-            $title,
-            $body,
-            'info',
-            ['type' => 'test_notification'],
-            $domain
+        // Fixed deployment origin, never body/header-selected environment targeting.
+        $domain = app(\App\Services\PushOrigin::class)->current();
+        $result = app(\App\Services\FcmNotificationService::class)->sendToUserDetailed(
+            $firebaseUid, $title, $body, 'info', ['type' => 'test_notification'], $domain
         );
-
-        if ($result) {
-            Log::info('[TEST NOTIFICATION] Sent successfully', [
-                'firebase_uid' => $firebaseUid,
-                'domain' => $domain,
-                'tokens_sent' => count($domainTokens),
-                'title' => $title
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Test notification sent successfully to ' . count($domainTokens) . ' device(s) on ' . $domain,
-                'domain' => $domain,
-                'tokens_sent' => count($domainTokens),
-                'tokens_preview' => array_map(function($token) {
-                    return substr($token, 0, 30) . '...';
-                }, $domainTokens)
-            ]);
-        }
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to send test notification'
-        ], 500);
+        $accepted = $result['provider_accepted'];
+        return response()->json(array_merge($result, [
+            'success' => $accepted > 0,
+            'message' => $accepted > 0 ? 'Provider accepted the notification' : 'No push accepted by provider',
+            'domain' => $domain,
+            'tokens_sent' => $accepted, // Compatibility alias: acceptance, not delivery.
+        ]), $accepted > 0 ? 200 : ($result['attempted'] > 0 ? 502 : 400));
     }
 
-    /**
-     * Authoritative admin check (owner implies admin). Any failure denies.
-     */
+    /** Only persisted bearer authentication can resolve the server push binding. */
+    private function bearer(Request $request): \Laravel\Sanctum\PersonalAccessToken
+    {
+        $bearer = $request->user()->currentAccessToken();
+        if (!$bearer instanceof \Laravel\Sanctum\PersonalAccessToken
+            || (int) $bearer->tokenable_id !== (int) $request->user()->getKey()
+            || $bearer->tokenable_type !== $request->user()->getMorphClass()) {
+            abort(403, 'Session-issued bearer required');
+        }
+        return $bearer;
+    }
+
+    /** Authoritative admin check, owner implies admin; failures deny. */
     protected function callerIsFirebaseAdmin(string $callerUid): bool
     {
         return app(\App\Services\FirebaseRoleService::class)->isAdmin($callerUid);
